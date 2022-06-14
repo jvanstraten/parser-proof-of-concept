@@ -115,7 +115,7 @@ where
     E: error::Error<'i, I, L>,
     Self: Sized,
 {
-    /// The type returned by the parser.
+    /// The parse tree type returned by the parser.
     type Output;
 
     /// The inner parsing function, to be implemented by parsers.
@@ -192,36 +192,25 @@ where
 
     /// Maps the output type of the current parser to a different type using
     /// the given function.
-    fn map<O, F>(self, map: F) -> combinator::Map<'i, I, Self::Output, O, F, L, E, Self>
+    fn map<O, F>(self, map: F) -> combinator::Map<Self, F>
     where
         F: Fn(Self::Output) -> O,
     {
-        combinator::Map {
-            child: self,
-            map,
-            phantom: Default::default(),
-        }
+        combinator::Map { child: self, map }
     }
 
     /// Maps the output type of the current parser along with the span of
     /// tokens that it matched to a different type using the given function.
-    fn map_with_span<O, F>(
-        self,
-        map: F,
-    ) -> combinator::MapWithSpan<'i, I, Self::Output, O, F, L, E, Self>
+    fn map_with_span<O, F>(self, map: F) -> combinator::MapWithSpan<Self, F>
     where
         F: Fn(Self::Output, L::Span) -> O,
     {
-        combinator::MapWithSpan {
-            child: self,
-            map,
-            phantom: Default::default(),
-        }
+        combinator::MapWithSpan { child: self, map }
     }
 
     /// Maps the error type of the current parser to a different type using
     /// the given function.
-    fn map_err<X, F>(self, map: F) -> combinator::MapErr<'i, I, E, Self::Output, F, L, X, Self>
+    fn map_err<X, F>(self, map: F) -> combinator::MapErr<Self, F, E>
     where
         F: Fn(E) -> X,
         X: error::Error<'i, I, L>,
@@ -235,10 +224,7 @@ where
 
     /// Maps the error type of the current parser along with the span of
     /// tokens that it matched to a different type using the given function.
-    fn map_err_with_span<X, F>(
-        self,
-        map: F,
-    ) -> combinator::MapErrWithSpan<'i, I, E, Self::Output, F, L, X, Self>
+    fn map_err_with_span<X, F>(self, map: F) -> combinator::MapErrWithSpan<Self, F, E>
     where
         F: Fn(E, L::Span) -> X,
         X: error::Error<'i, I, L>,

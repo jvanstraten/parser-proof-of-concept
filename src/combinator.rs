@@ -3,29 +3,12 @@ use super::location;
 use super::parser;
 
 /// See [parser::Parser::map()].
-///
-///  - 'i: lifetime of input tokens
-///  - I: type of input tokens
-///  - A: output of child parser, input of map
-///  - O: output of map
-///  - F: function mapping A to O
-///  - L: location tracker type
-///  - E: error type
-///  - C: child parser type
-pub struct Map<'i, I, A, O, F, L, E, C>
-where
-    I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    C: parser::Parser<'i, I, L, E, Output = A>,
-    F: Fn(A) -> O,
-{
+pub struct Map<C, F> {
     pub(crate) child: C,
     pub(crate) map: F,
-    pub(crate) phantom: std::marker::PhantomData<(&'i I, A, O, L, E)>,
 }
 
-impl<'i, I, A, O, F, L, E, C> parser::Parser<'i, I, L, E> for Map<'i, I, A, O, F, L, E, C>
+impl<'i, I, A, O, F, L, E, C> parser::Parser<'i, I, L, E> for Map<C, F>
 where
     I: 'i,
     L: location::LocationTracker<I>,
@@ -47,29 +30,12 @@ where
 }
 
 /// See [parser::Parser::map_with_span()].
-///
-///  - 'i: lifetime of input tokens
-///  - I: type of input tokens
-///  - A: output of child parser, input of map
-///  - O: output of map
-///  - F: function mapping A to O
-///  - L: location tracker type
-///  - E: error type
-///  - C: child parser type
-pub struct MapWithSpan<'i, I, A, O, F, L, E, C>
-where
-    I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    C: parser::Parser<'i, I, L, E, Output = A>,
-    F: Fn(A, L::Span) -> O,
-{
+pub struct MapWithSpan<C, F> {
     pub(crate) child: C,
     pub(crate) map: F,
-    pub(crate) phantom: std::marker::PhantomData<(&'i I, A, O, L, E)>,
 }
 
-impl<'i, I, A, O, F, L, E, C> parser::Parser<'i, I, L, E> for MapWithSpan<'i, I, A, O, F, L, E, C>
+impl<'i, I, A, O, F, L, E, C> parser::Parser<'i, I, L, E> for MapWithSpan<C, F>
 where
     I: 'i,
     L: location::LocationTracker<I>,
@@ -98,39 +64,22 @@ where
 }
 
 /// See [parser::Parser::map_err()].
-///
-///  - 'i: lifetime of input tokens
-///  - I: type of input tokens
-///  - A: error type of child parser, input of map
-///  - O: output type
-///  - F: function mapping A to O
-///  - L: location tracker type
-///  - E: output error type
-///  - C: child parser type
-pub struct MapErr<'i, I, A, O, F, L, E, C>
-where
-    I: 'i,
-    L: location::LocationTracker<I>,
-    A: error::Error<'i, I, L>,
-    E: error::Error<'i, I, L>,
-    C: parser::Parser<'i, I, L, A, Output = O>,
-    F: Fn(A) -> E,
-{
+pub struct MapErr<C, F, A> {
     pub(crate) child: C,
     pub(crate) map: F,
-    pub(crate) phantom: std::marker::PhantomData<(&'i I, A, O, L, E)>,
+    pub(crate) phantom: std::marker::PhantomData<A>,
 }
 
-impl<'i, I, A, O, F, L, E, C> parser::Parser<'i, I, L, E> for MapErr<'i, I, A, O, F, L, E, C>
+impl<'i, I, A, F, L, E, C> parser::Parser<'i, I, L, E> for MapErr<C, F, A>
 where
     I: 'i,
     L: location::LocationTracker<I>,
     A: error::Error<'i, I, L>,
     E: error::Error<'i, I, L>,
-    C: parser::Parser<'i, I, L, A, Output = O>,
+    C: parser::Parser<'i, I, L, A>,
     F: Fn(A) -> E,
 {
-    type Output = O;
+    type Output = C::Output;
 
     fn parse_internal(
         &self,
@@ -144,40 +93,22 @@ where
 }
 
 /// See [parser::Parser::map_err_with_span()].
-///
-///  - 'i: lifetime of input tokens
-///  - I: type of input tokens
-///  - A: error type of child parser, input of map
-///  - O: output type
-///  - F: function mapping A to O
-///  - L: location tracker type
-///  - E: output error type
-///  - C: child parser type
-pub struct MapErrWithSpan<'i, I, A, O, F, L, E, C>
-where
-    I: 'i,
-    L: location::LocationTracker<I>,
-    A: error::Error<'i, I, L>,
-    E: error::Error<'i, I, L>,
-    C: parser::Parser<'i, I, L, A, Output = O>,
-    F: Fn(A, L::Span) -> E,
-{
+pub struct MapErrWithSpan<C, F, A> {
     pub(crate) child: C,
     pub(crate) map: F,
-    pub(crate) phantom: std::marker::PhantomData<(&'i I, A, O, L, E)>,
+    pub(crate) phantom: std::marker::PhantomData<A>,
 }
 
-impl<'i, I, A, O, F, L, E, C> parser::Parser<'i, I, L, E>
-    for MapErrWithSpan<'i, I, A, O, F, L, E, C>
+impl<'i, I, A, F, L, E, C> parser::Parser<'i, I, L, E> for MapErrWithSpan<C, F, A>
 where
     I: 'i,
     L: location::LocationTracker<I>,
     A: error::Error<'i, I, L>,
     E: error::Error<'i, I, L>,
-    C: parser::Parser<'i, I, L, A, Output = O>,
+    C: parser::Parser<'i, I, L, A>,
     F: Fn(A, L::Span) -> E,
 {
-    type Output = O;
+    type Output = C::Output;
 
     fn parse_internal(
         &self,
