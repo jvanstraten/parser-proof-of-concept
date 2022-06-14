@@ -24,7 +24,7 @@ where
 }
 
 /// Simple error message type.
-enum Simple<'i, I, L>
+pub enum Simple<'i, I, L>
 where
     I: 'i + std::fmt::Display + Eq + std::hash::Hash,
     L: location::LocationTracker<I>,
@@ -69,8 +69,7 @@ where
     L::Span: std::fmt::Display,
 {
     /// Constructs a custom error message.
-    fn custom<S: ToString>(message: S) -> Self {
+    pub fn custom<S: ToString>(message: S) -> Self {
         Self::Custom(message.to_string())
     }
 }
-

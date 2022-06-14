@@ -1,6 +1,6 @@
+use super::error;
 use super::location;
 use super::stream;
-use super::error;
 
 /// Result of a parser.
 pub enum Result<O, E> {
@@ -28,7 +28,7 @@ impl<O, E> From<Result<O, E>> for std::result::Result<O, E> {
 }
 
 /// Main parser trait.
-/// 
+///
 ///  - 'i: lifetime of the input tokens
 ///  - I: type of an input token
 ///  - L: location tracker instance
@@ -57,17 +57,21 @@ where
     /// (Ok(), vec![E, ...]).
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> Result<Self::Output, E>;
 
     /// Parse the given source of tokens, starting from the given location.
     /// Return the (potentially recovered) parse tree and the list of errors
     /// produced while parsing.
-    fn parse_with_recovery_and_location<J>(&self, source: J, start_location: L) -> Result<Self::Output, E>
+    fn parse_with_recovery_and_location<J>(
+        &self,
+        source: J,
+        start_location: L,
+    ) -> Result<Self::Output, E>
     where
         J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'static,
+        J::IntoIter: 'i,
     {
         let mut stream = stream::Stream::new_with_location(source, start_location);
         self.parse_internal(&mut stream, true)
@@ -75,12 +79,17 @@ where
 
     /// Parse the given source of tokens, starting from the given location.
     /// Return the parse tree or the first error.
-    fn parse_with_location<J>(&self, source: J, start_location: L) -> std::result::Result<Self::Output, E>
+    fn parse_with_location<J>(
+        &self,
+        source: J,
+        start_location: L,
+    ) -> std::result::Result<Self::Output, E>
     where
         J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'static,
+        J::IntoIter: 'i,
     {
-        self.parse_with_recovery_and_location(source, start_location).into()
+        self.parse_with_recovery_and_location(source, start_location)
+            .into()
     }
 
     /// Parse the given source of tokens. Return the (potentially recovered)
@@ -88,7 +97,7 @@ where
     fn parse_with_recovery<J>(&self, source: J) -> Result<Self::Output, E>
     where
         J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'static,
+        J::IntoIter: 'i,
         L: Default,
     {
         self.parse_with_recovery_and_location(source, L::default())
@@ -99,7 +108,7 @@ where
     fn parse<J>(&self, source: J) -> std::result::Result<Self::Output, E>
     where
         J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'static,
+        J::IntoIter: 'i,
         L: Default,
     {
         self.parse_with_recovery(source).into()

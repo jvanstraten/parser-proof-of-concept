@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 
 /// Opaque object representing a saved stream state.
 pub struct SavedState {
-    index: std::rc::Rc<usize>
+    index: std::rc::Rc<usize>,
 }
 
 /// A stream of tokens that can backtrack to arbitrary positions that were
@@ -14,7 +14,7 @@ where
     L: location::LocationTracker<I>,
 {
     /// Iterator representing the source of the tokens.
-    source: Box<dyn Iterator<Item = &'i I>>,
+    source: Box<dyn Iterator<Item = &'i I> + 'i>,
 
     /// Whether the source iterator has returned None.
     source_at_eof: bool,
@@ -50,7 +50,7 @@ where
     pub fn new<J>(source: J) -> Self
     where
         J: IntoIterator<Item = &'i I>,
-        <J as IntoIterator>::IntoIter: 'static,
+        J::IntoIter: 'i,
         L: Default,
     {
         Self {
@@ -68,7 +68,7 @@ where
     pub fn new_with_location<J>(source: J, start_location: L) -> Self
     where
         J: IntoIterator<Item = &'i I>,
-        <J as IntoIterator>::IntoIter: 'static,
+        J::IntoIter: 'i,
     {
         Self {
             source: Box::new(source.into_iter()),
@@ -136,7 +136,7 @@ where
             let next_location = self.source_location.clone();
 
             // Advance the location tracker accordingly.
-            self.source_location.advance(&next_token);
+            self.source_location.advance(next_token);
 
             // If the buffer is at capacity, see if we can drop some stuff.
             if self.buffer.len() == self.buffer.capacity() {
@@ -243,12 +243,17 @@ where
 
     /// Returns the location at the given saved state.
     pub fn location_at(&self, saved_state: &SavedState) -> L::Location {
-        self.location_tracker_at(saved_state).location(self.index_at(saved_state))
+        self.location_tracker_at(saved_state)
+            .location(self.index_at(saved_state))
     }
 
     /// Returns the span from the given saved location to the current location.
     pub fn spanning_back_to(&mut self, saved_state: &SavedState) -> L::Span {
-        self.location_tracker_at(saved_state).spanning_to(self.index_at(saved_state), self.location_tracker(), self.index())
+        self.location_tracker_at(saved_state).spanning_to(
+            self.index_at(saved_state),
+            self.location_tracker(),
+            self.index(),
+        )
     }
 
     /// Returns whether we've reached EOF.

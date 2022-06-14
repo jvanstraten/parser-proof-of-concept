@@ -1,6 +1,6 @@
-use super::parser;
-use super::location;
 use super::error;
+use super::location;
+use super::parser;
 
 pub struct Just<'i, I, O, L, E>
 where
@@ -22,23 +22,22 @@ where
     E: error::Error<'i, I, L>,
 {
     type Output = &'i O;
-    
+
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<I, L>,
-        enable_recovery: bool,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Save the initial parser state, so we can restore it if we encounter
         // an error.
         let initial = stream.save();
 
         // Match concatenation of tokens returned by expected.
-        for expected in (&self.expected).into_iter() {
+        for expected in self.expected.into_iter() {
             let found = stream.token();
             if found == Some(expected) {
                 stream.advance();
             } else {
-
                 // Get error information from the stream, then restore it to
                 // the initial position.
                 let successful_up_to = stream.index();
@@ -50,12 +49,15 @@ where
                 drop(initial);
 
                 // Construct error message.
-                return parser::Result::Failed(successful_up_to, E::expected_found([Some(expected)], found, span))
+                return parser::Result::Failed(
+                    successful_up_to,
+                    E::expected_found([Some(expected)], found, span),
+                );
             }
         }
 
         // All elements were matched successfully.
-        return parser::Result::Success(self.expected)
+        parser::Result::Success(self.expected)
     }
 }
 
@@ -72,4 +74,3 @@ where
         phantom: std::marker::PhantomData::default(),
     }
 }
-
