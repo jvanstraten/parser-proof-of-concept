@@ -5,10 +5,10 @@
 /// consider sticking it in an Rc. The default is simply empty.
 pub trait LocationTracker<I>: Clone {
     /// The type for a single location.
-    type Location;
+    type Location: PartialEq;
 
     /// The type for spans between two of these locations.
-    type Span;
+    type Span: PartialEq;
 
     /// Advances the source location past the given token.
     fn advance(&mut self, token: &I);

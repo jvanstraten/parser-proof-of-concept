@@ -1,6 +1,30 @@
+use super::algorithm;
 use super::error;
 use super::location;
 use super::parser;
+use super::primitive;
+
+/// See [parser::Parser::boxed()].
+pub struct Boxed<'i, I, O, L, E> {
+    pub(crate) parser: Box<dyn parser::Parser<'i, I, L, E, Output = O> + 'i>,
+}
+
+impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for Boxed<'i, I, O, L, E>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+{
+    type Output = O;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        self.parser.parse_internal(stream, enable_recovery)
+    }
+}
 
 /// See [parser::Parser::to()].
 pub struct To<C, O> {
@@ -31,6 +55,29 @@ where
 
 /// See [parser::Parser::ignored()].
 pub type Ignored<C> = To<C, ()>;
+
+/// See [parser::Parser::some()].
+pub struct Some<C> {
+    pub(crate) child: C,
+}
+
+impl<'i, I, O, L, E, C> parser::Parser<'i, I, L, E> for Some<C>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    C: parser::Parser<'i, I, L, E, Output = O>,
+{
+    type Output = Option<O>;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        self.child.parse_internal(stream, enable_recovery).map(Some)
+    }
+}
 
 /// See [parser::Parser::map()].
 pub struct Map<C, F> {
@@ -198,93 +245,6 @@ where
     }
 }
 
-macro_rules! concat_parsers {
-    ($stream:expr, $enable_recovery:expr, $map:expr, $first:expr, $($other:expr),*) => {{
-        // Store the initial state, which we'll need to restore if the first
-        // parser succeeds but the second fails.
-        let initial = $stream.save();
-
-        // Set to Some(errors) when a child parser recovered from a parse
-        // error.
-        let mut recovery = None;
-
-        // Construct a tuple of the outputs as we parse.
-        let o = (
-
-            // Parse the first child.
-            match $first.parse_internal($stream, $enable_recovery) {
-                parser::Result::Success(a) => a,
-                parser::Result::Recovered(a, es_a) => {
-                    recovery = Some(es_a);
-                    a
-                }
-                parser::Result::Failed(i, es) => {
-                    // No need to restore state, because the only parser we ran
-                    // failed.
-                    return parser::Result::Failed(i, es);
-                }
-            },
-
-            $(
-                // Parse the other children.
-                match $other.parse_internal($stream, $enable_recovery) {
-                    parser::Result::Success(b) => b,
-                    parser::Result::Recovered(b, es_b) => {
-                        if let Some(es) = &mut recovery {
-                            es.extend(es_b);
-                        } else {
-                            recovery = Some(es_b);
-                        }
-                        b
-                    }
-                    parser::Result::Failed(i, es) => {
-                        // Need to restore the state here, previous  parsers
-                        // will have mutated it.
-                        $stream.restore(&initial);
-                        return parser::Result::Failed(i, es);
-                    }
-                },
-            )*
-
-        );
-
-        // Map the tuple according to the map function.
-        let map = $map;
-        let o = map(o);
-
-        // Return success or recovered based on whether any of the parsers
-        // resovered.
-        if let Some(es) = recovery {
-            assert!($enable_recovery);
-            parser::Result::Recovered(o, es)
-        } else {
-            parser::Result::Success(o)
-        }
-    }};
-}
-
-/// See [parser::Parser::boxed()].
-pub struct Boxed<'i, I, O, L, E> {
-    pub parser: Box<dyn parser::Parser<'i, I, L, E, Output = O> + 'i>,
-}
-
-impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for Boxed<'i, I, O, L, E>
-where
-    I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-{
-    type Output = O;
-
-    fn parse_internal(
-        &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
-        enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
-        self.parser.parse_internal(stream, enable_recovery)
-    }
-}
-
 /// See [parser::Parser::then()].
 pub struct Then<A, B> {
     pub(crate) a: A,
@@ -306,7 +266,7 @@ where
         stream: &mut crate::stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        concat_parsers!(stream, enable_recovery, |x| x, self.a, self.b)
+        concatenate!(stream, enable_recovery, |x| x, self.a, self.b)
     }
 }
 
@@ -331,7 +291,7 @@ where
         stream: &mut crate::stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        concat_parsers!(stream, enable_recovery, |(a, _b)| a, self.a, self.b)
+        concatenate!(stream, enable_recovery, |(a, _b)| a, self.a, self.b)
     }
 }
 
@@ -356,7 +316,7 @@ where
         stream: &mut crate::stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        concat_parsers!(stream, enable_recovery, |(_a, b)| b, self.a, self.b)
+        concatenate!(stream, enable_recovery, |(_a, b)| b, self.a, self.b)
     }
 }
 
@@ -383,7 +343,7 @@ where
         stream: &mut crate::stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        concat_parsers!(
+        concatenate!(
             stream,
             enable_recovery,
             |(_l, m, _r)| m,
@@ -415,7 +375,7 @@ where
         stream: &mut crate::stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        concat_parsers!(
+        concatenate!(
             stream,
             enable_recovery,
             |(_l, m, _r)| m,
@@ -425,3 +385,213 @@ where
         )
     }
 }
+
+/// See [parser::Parser::chain()].
+pub struct Chain<'i, I, O, L, E> {
+    pub(crate) parsers: Vec<Boxed<'i, I, O, L, E>>,
+}
+
+impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for Chain<'i, I, O, L, E>
+where
+    I: 'i,
+    O: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+{
+    type Output = Vec<O>;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        algorithm::concatenate(stream, enable_recovery, &self.parsers)
+    }
+}
+
+impl<'i, I, O, L, E> Chain<'i, I, O, L, E>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+{
+    /// Append an additional parser to this chain.
+    pub fn and<B>(self, other: B) -> Chain<'i, I, O, L, E>
+    where
+        B: parser::Parser<'i, I, L, E, Output = O> + 'i,
+    {
+        let mut parsers = self.parsers;
+        parsers.push(other.boxed());
+        Chain { parsers }
+    }
+}
+
+/// See [parser::Parser::or()].
+pub struct Or<A, B> {
+    pub(crate) a: A,
+    pub(crate) b: B,
+}
+
+impl<'i, I, O, L, E, A, B> parser::Parser<'i, I, L, E> for Or<A, B>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    A: parser::Parser<'i, I, L, E, Output = O>,
+    B: parser::Parser<'i, I, L, E, Output = O>,
+{
+    type Output = O;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        alternate!(stream, enable_recovery, &self.a, &self.b)
+    }
+}
+
+/// See [parser::Parser::or_not()].
+pub struct OrNot<A> {
+    pub(crate) a: Some<A>,
+}
+
+impl<'i, I, O, L, E, A> parser::Parser<'i, I, L, E> for OrNot<A>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    A: parser::Parser<'i, I, L, E, Output = O>,
+{
+    type Output = Option<O>;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        alternate!(stream, enable_recovery, &self.a, &primitive::none::<O>())
+    }
+}
+
+/// See [parser::Parser::chain_alternatives()].
+pub struct ChainAlternatives<'i, I, O, L, E> {
+    pub(crate) parsers: Vec<Boxed<'i, I, O, L, E>>,
+}
+
+impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for ChainAlternatives<'i, I, O, L, E>
+where
+    I: 'i,
+    O: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+{
+    type Output = O;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        algorithm::alternate(stream, enable_recovery, &self.parsers)
+    }
+}
+
+impl<'i, I, O, L, E> ChainAlternatives<'i, I, O, L, E>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+{
+    /// Append an additional parser to this chain.
+    pub fn and<B>(self, other: B) -> Chain<'i, I, O, L, E>
+    where
+        B: parser::Parser<'i, I, L, E, Output = O> + 'i,
+    {
+        let mut parsers = self.parsers;
+        parsers.push(other.boxed());
+        Chain { parsers }
+    }
+}
+
+/// See [parser::Parser::repeated()].
+pub struct Repeated<A, B = primitive::Empty> {
+    pub(crate) minimum: usize,
+    pub(crate) maximum: Option<usize>,
+    pub(crate) item: A,
+    pub(crate) separator: Option<B>,
+    pub(crate) allow_leading: bool,
+    pub(crate) allow_trailing: bool,
+}
+
+impl<'i, I, L, E, A> parser::Parser<'i, I, L, E> for Repeated<A>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    A: parser::Parser<'i, I, L, E>,
+{
+    type Output = Vec<A::Output>;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        algorithm::repeat(
+            stream,
+            enable_recovery,
+            self.minimum,
+            self.maximum,
+            &self.item,
+            self.separator.as_ref(),
+            self.allow_leading,
+            self.allow_trailing,
+        )
+    }
+}
+
+impl<A, B> Repeated<A, B> {
+    /// Require at least the given amount of iterations.
+    pub fn at_least(mut self, minimum: usize) -> Self {
+        self.minimum = minimum;
+        self
+    }
+
+    /// Require at most the given amount of iterations.
+    pub fn at_most(mut self, maximum: usize) -> Self {
+        self.maximum = Some(maximum);
+        self
+    }
+
+    /// Require exactly given amount of iterations.
+    pub fn exactly(mut self, amount: usize) -> Self {
+        self.minimum = amount;
+        self.maximum = Some(amount);
+        self
+    }
+
+    /// Require separators to exist between the repetitions. The result of the
+    /// separator parser is ignored.
+    pub fn with_separator(mut self, separator: B) -> Self {
+        self.separator = Some(separator);
+        self
+    }
+
+    /// Allow a leading separator to appear before the first item. This is
+    /// allowed even if no items are parsed.
+    pub fn allow_leading(mut self) -> Self {
+        self.allow_leading = true;
+        self
+    }
+
+    /// Allow a trailing separator to appear after the last item. This is
+    /// allowed only if at least one item is parsed.
+    pub fn allow_trailing(mut self) -> Self {
+        self.allow_trailing = true;
+        self
+    }
+}
+
+/// See [parser::Parser::separated_by()].
+pub type SeparatedBy<A, B> = Repeated<A, B>;

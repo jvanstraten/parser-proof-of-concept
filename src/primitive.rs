@@ -7,7 +7,7 @@ pub struct Empty();
 
 impl<'i, I, L, E> parser::Parser<'i, I, L, E> for Empty
 where
-    I: 'i + PartialEq,
+    I: 'i,
     L: location::LocationTracker<I>,
     E: error::Error<'i, I, L>,
 {
@@ -27,12 +27,42 @@ pub fn empty() -> Empty {
     Empty()
 }
 
+/// See [none()].
+pub struct None<O> {
+    phantom: std::marker::PhantomData<O>,
+}
+
+impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for None<O>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+{
+    type Output = Option<O>;
+
+    fn parse_internal(
+        &self,
+        _stream: &mut crate::stream::Stream<'i, I, L>,
+        _enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        parser::Result::Success(None)
+    }
+}
+
+/// Match nothing; always succeeds. Returns Option::None for the given option
+/// type.
+pub fn none<O>() -> None<O> {
+    None {
+        phantom: Default::default(),
+    }
+}
+
 /// See [end()].
 pub struct End();
 
 impl<'i, I, L, E> parser::Parser<'i, I, L, E> for End
 where
-    I: 'i + PartialEq,
+    I: 'i,
     L: location::LocationTracker<I>,
     E: error::Error<'i, I, L>,
 {

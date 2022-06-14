@@ -1,3 +1,5 @@
+#[macro_use]
+mod algorithm;
 pub mod combinator;
 pub mod error;
 pub mod location;

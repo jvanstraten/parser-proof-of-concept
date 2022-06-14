@@ -2,16 +2,37 @@ use std::collections::HashSet;
 
 use super::location;
 
-pub enum At<L, S> {
+/// Wrapper for the types of location information that may be attached to an
+/// error message.
+#[derive(PartialEq)]
+pub enum At<L, S>
+where
+    L: PartialEq,
+    S: PartialEq,
+{
     None,
     Location(L),
     Span(S),
 }
 
+impl<L, S> At<L, S>
+where
+    L: PartialEq,
+    S: PartialEq,
+{
+    pub fn as_ref(&self) -> At<&L, &S> {
+        match self {
+            At::None => At::None,
+            At::Location(l) => At::Location(l),
+            At::Span(s) => At::Span(s),
+        }
+    }
+}
+
 impl<L, S> std::fmt::Display for At<L, S>
 where
-    L: std::fmt::Display,
-    S: std::fmt::Display,
+    L: std::fmt::Display + PartialEq,
+    S: std::fmt::Display + PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -40,6 +61,13 @@ where
     /// Adds to the set of expected tokens by means of the given other
     /// expected-found message.
     fn merge_expected_found(&mut self, other: &Self);
+
+    /// Returns whether this error message is an expected-found message that
+    /// [Error::merge_expected_found()] can be applied to.
+    fn is_expected_found(&self) -> bool;
+
+    /// Returns the location information associated with this error, if any.
+    fn location(&self) -> At<&L::Location, &L::Span>;
 
     /// Constructor for a custom message with a location.
     fn custom<M: ToString>(msg: M, at: At<L::Location, L::Span>) -> Self;
@@ -84,6 +112,17 @@ where
     fn merge_expected_found(&mut self, other: &Self) {
         if let (Self::ExpectedFound(dest, _, _), Self::ExpectedFound(src, _, _)) = (self, other) {
             dest.extend(src)
+        }
+    }
+
+    fn is_expected_found(&self) -> bool {
+        matches!(self, Self::ExpectedFound(_, _, _))
+    }
+
+    fn location(&self) -> At<&L::Location, &L::Span> {
+        match self {
+            Simple::ExpectedFound(_, _, l) => l.as_ref(),
+            Simple::Custom(_, l) => l.as_ref(),
         }
     }
 

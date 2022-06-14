@@ -216,6 +216,17 @@ where
         self.parse_with_recovery(source).into()
     }
 
+    /// Returns this parser in a box, giving a consistent type regardless of
+    /// the contained parser.
+    fn boxed(self) -> combinator::Boxed<'i, I, Self::Output, L, E>
+    where
+        Self: Sized + 'i,
+    {
+        combinator::Boxed {
+            parser: Box::new(self),
+        }
+    }
+
     /// Maps the output of the current parser to clones of the given object.
     /// Simply pass an immutable reference to avoid cloning.
     fn to<O>(self, to: O) -> combinator::To<Self, O>
@@ -235,6 +246,14 @@ where
             child: self,
             to: (),
         }
+    }
+
+    /// Maps the output of the current parser Some(output).
+    fn some(self) -> combinator::Some<Self>
+    where
+        Self: Sized,
+    {
+        combinator::Some { child: self }
     }
 
     /// Maps the output type of the current parser to a different type using
@@ -305,17 +324,6 @@ where
         combinator::TryMap { child: self, map }
     }
 
-    /// Returns this parser in a box, giving a consistent type regardless of
-    /// the contained parser.
-    fn boxed(self) -> combinator::Boxed<'i, I, Self::Output, L, E>
-    where
-        Self: Sized + 'i,
-    {
-        combinator::Boxed {
-            parser: Box::new(self),
-        }
-    }
-
     /// Parses the concatenation of the current and the given parser, yielding
     /// their results as a two-tuple.
     fn then<B>(self, b: B) -> combinator::Then<Self, B>
@@ -373,18 +381,94 @@ where
             middle: self,
         }
     }
-    /*
+
     /// Parses the concatenation of the current and given parser, returning the
-    /// two results as an array. The return types of the two parsers must thus
-    /// match. Consecutive calls to array() will extend the array.
-    fn array<A>(self, other: A) -> combinator::Array<A, 2>
+    /// two results as a vector. The return types of the two parsers must thus
+    /// match. Additional parsers can be added using [combinator::Chain::and()].
+    ///
+    /// Note: chain() works a little different from how it currently works in
+    /// Chumsky, because I couldn't be bothered making the additional types
+    /// needed to do it that way.
+    fn chain<A>(self, other: A) -> combinator::Chain<'i, I, Self::Output, L, E>
     where
-        A: Parser<'i, I, L, E>,
+        A: Parser<'i, I, L, E, Output = Self::Output> + 'i,
+        Self: Sized + 'i,
+    {
+        combinator::Chain {
+            parsers: vec![self.boxed(), other.boxed()],
+        }
+    }
+
+    /// Parses using either the current or the other parser, preferring the
+    /// current parser if both match.
+    fn or<A>(self, other: A) -> combinator::Or<Self, A>
+    where
+        A: Parser<'i, I, L, E, Output = Self::Output>,
         Self: Sized,
     {
-        combinator::Array {
-            parsers: vec![self, other],
-            middle: self,
+        combinator::Or { a: self, b: other }
+    }
+
+    /// Makes the input matched by the current parser optional, wrapping its
+    /// output in an [Option].
+    fn or_not(self) -> combinator::OrNot<Self>
+    where
+        Self: Sized,
+    {
+        combinator::OrNot { a: self.some() }
+    }
+
+    /// Parses the alternation of the current and given parser, returning the
+    /// result of the first parser that matches. The return types of the two
+    /// parsers must thus match. Additional parsers can be added using
+    /// [combinator::ChainAlternatives::and()].
+    ///
+    /// Note: chain_alternatives() is kinda like choice() in Chumsky, but I'm
+    /// too lazy to write it out that way when I can just copy-paste chain().
+    fn chain_alternatives<A>(
+        self,
+        other: A,
+    ) -> combinator::ChainAlternatives<'i, I, Self::Output, L, E>
+    where
+        A: Parser<'i, I, L, E, Output = Self::Output> + 'i,
+        Self: Sized + 'i,
+    {
+        combinator::ChainAlternatives {
+            parsers: vec![self.boxed(), other.boxed()],
         }
-    }*/
+    }
+
+    /// Matches this parser a number of times. Use the methods on
+    /// [combinator::Repeated] to specialize.
+    fn repeated(self) -> combinator::Repeated<Self>
+    where
+        Self: Sized,
+    {
+        combinator::Repeated {
+            minimum: 0,
+            maximum: None,
+            item: self,
+            separator: None,
+            allow_leading: false,
+            allow_trailing: false,
+        }
+    }
+
+    /// Matches this parser a number of times, using the given separator.
+    /// The result of the separator parser is ignored. Use the methods on
+    /// [combinator::Repeated] to specialize.
+    fn separated_by<A>(self, separator: A) -> combinator::SeparatedBy<Self, A>
+    where
+        Self: Sized,
+        A: Parser<'i, I, L, E>,
+    {
+        combinator::Repeated {
+            minimum: 0,
+            maximum: None,
+            item: self,
+            separator: Some(separator),
+            allow_leading: false,
+            allow_trailing: false,
+        }
+    }
 }
