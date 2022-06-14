@@ -247,6 +247,13 @@ where
             .location(self.index_at(saved_state))
     }
 
+    /// Returns a null span at the current location.
+    pub fn span(&mut self) -> L::Span {
+        let tracker = self.location_tracker();
+        let index = self.index();
+        tracker.spanning_to(index, tracker, index)
+    }
+
     /// Returns the span from the given saved location to the current location.
     pub fn spanning_back_to(&mut self, saved_state: &SavedState) -> L::Span {
         self.location_tracker_at(saved_state).spanning_to(
