@@ -24,9 +24,9 @@ pub trait LocationTracker<I>: Clone {
 /// The simplest form of location is just a usize index, with Range<usize>
 /// as the span type.
 #[derive(Clone, Copy)]
-pub struct SimpleTracker();
+pub struct Simple();
 
-impl<I> LocationTracker<I> for SimpleTracker {
+impl<I> LocationTracker<I> for Simple {
     type Location = usize;
     type Span = std::ops::Range<usize>;
 
@@ -42,7 +42,7 @@ impl<I> LocationTracker<I> for SimpleTracker {
 }
 
 /// A location that tracks source file and row/column/byte location.
-pub struct RichTracker<I: ?Sized, F: Fn(&I) -> &str> {
+pub struct Rich<I: ?Sized, F: Fn(&I) -> &str> {
     /// Immutable data; the source filename and the token-to-str converter.
     immutable: std::rc::Rc<(std::rc::Rc<String>, F)>,
 
@@ -58,7 +58,7 @@ pub struct RichTracker<I: ?Sized, F: Fn(&I) -> &str> {
     phantom: std::marker::PhantomData<I>,
 }
 
-impl<I, F: Fn(&I) -> &str> Clone for RichTracker<I, F> {
+impl<I, F: Fn(&I) -> &str> Clone for Rich<I, F> {
     fn clone(&self) -> Self {
         Self {
             immutable: self.immutable.clone(),
@@ -70,7 +70,7 @@ impl<I, F: Fn(&I) -> &str> Clone for RichTracker<I, F> {
     }
 }
 
-impl<I, F: Fn(&I) -> &str> RichTracker<I, F> {
+impl<I, F: Fn(&I) -> &str> Rich<I, F> {
     pub fn new<S: ToString>(source_file: S, converter: F) -> Self {
         Self {
             immutable: std::rc::Rc::new((std::rc::Rc::new(source_file.to_string()), converter)),
@@ -82,7 +82,7 @@ impl<I, F: Fn(&I) -> &str> RichTracker<I, F> {
     }
 }
 
-impl<I, F: Fn(&I) -> &str> LocationTracker<I> for RichTracker<I, F> {
+impl<I, F: Fn(&I) -> &str> LocationTracker<I> for Rich<I, F> {
     type Location = RichLocation;
     type Span = RichSpan;
 

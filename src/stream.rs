@@ -1,14 +1,20 @@
 use super::location;
 use std::collections::VecDeque;
 
+/// Opaque object representing a saved stream state.
+pub struct SavedState {
+    index: std::rc::Rc<usize>
+}
+
 /// A stream of tokens that can backtrack to arbitrary positions that were
 /// previously saved.
-pub struct Stream<I, L>
+pub struct Stream<'i, I, L>
 where
+    I: 'i,
     L: location::LocationTracker<I>,
 {
     /// Iterator representing the source of the tokens.
-    source: Box<dyn Iterator<Item = I>>,
+    source: Box<dyn Iterator<Item = &'i I>>,
 
     /// Whether the source iterator has returned None.
     source_at_eof: bool,
@@ -21,7 +27,7 @@ where
     /// was most recently consumed from the iterator; the front is the oldest
     /// token that we may still have to backtrack to (or perhaps something
     /// older).
-    buffer: VecDeque<(I, L)>,
+    buffer: VecDeque<(Option<&'i I>, L)>,
 
     /// The index of the next token relative to the front of the buffer.
     index_in_buffer: usize,
@@ -29,19 +35,21 @@ where
     /// The index of the next token relative to the start of the input.
     index: usize,
 
-    /// All indices of tokens we may still have to backtrack to.
+    /// All indices of tokens we may still have to backtrack to. We use weak
+    /// Rcs to track which markers are in scope.
     backtrack_markers: Vec<std::rc::Weak<usize>>,
 }
 
-impl<I, L> Stream<I, L>
+impl<'i, I, L> Stream<'i, I, L>
 where
+    I: 'i,
     L: location::LocationTracker<I>,
 {
     /// Constructs a token stream from an iterable, using the default start
     /// location.
     pub fn new<J>(source: J) -> Self
     where
-        J: IntoIterator<Item = I>,
+        J: IntoIterator<Item = &'i I>,
         <J as IntoIterator>::IntoIter: 'static,
         L: Default,
     {
@@ -59,7 +67,7 @@ where
     /// Constructs a token stream from an iterable and an initial start location.
     pub fn new_with_location<J>(source: J, start_location: L) -> Self
     where
-        J: IntoIterator<Item = I>,
+        J: IntoIterator<Item = &'i I>,
         <J as IntoIterator>::IntoIter: 'static,
     {
         Self {
@@ -74,16 +82,28 @@ where
     }
 
     /// Saves the current location, so it can be restored later.
-    pub fn save(&mut self) -> std::rc::Rc<usize> {
-        let marker = std::rc::Rc::new(self.index);
-        self.backtrack_markers.push(std::rc::Rc::downgrade(&marker));
-        marker
+    pub fn save(&mut self) -> SavedState {
+        let index = std::rc::Rc::new(self.index);
+        let downgraded = std::rc::Rc::downgrade(&index);
+
+        // If the backtrack markers vector is at capacity, try finding an empty
+        // spot rather than reallocating.
+        if self.backtrack_markers.len() == self.backtrack_markers.capacity() {
+            for old_marker in self.backtrack_markers.iter_mut().rev() {
+                if old_marker.strong_count() == 0 {
+                    *old_marker = downgraded;
+                    return SavedState { index };
+                }
+            }
+        }
+        self.backtrack_markers.push(downgraded);
+        SavedState { index }
     }
 
     /// Restores a location that was previously saved.
-    pub fn restore(&mut self, index: std::rc::Rc<usize>) {
-        assert!(*index <= self.index);
-        let amount = self.index - *index;
+    pub fn restore(&mut self, saved_state: &SavedState) {
+        assert!(*saved_state.index <= self.index);
+        let amount = self.index - *saved_state.index;
         assert!(amount >= self.index_in_buffer);
         self.index_in_buffer -= amount;
         self.index -= amount;
@@ -119,7 +139,7 @@ where
             self.source_location.advance(&next_token);
 
             // If the buffer is at capacity, see if we can drop some stuff.
-            if self.buffer.len() <= self.buffer.capacity() {
+            if self.buffer.len() == self.buffer.capacity() {
                 // Remove markers that have gone out of scope.
                 self.backtrack_markers.retain(|x| x.strong_count() > 0);
 
@@ -150,52 +170,103 @@ where
             }
 
             // Push the token into the buffer.
-            self.buffer.push_back((next_token, next_location));
+            self.buffer.push_back((Some(next_token), next_location));
             true
         } else {
             // Source returned EOF; store this and signal EOF.
+            self.buffer.push_back((None, self.source_location.clone()));
             self.source_at_eof = true;
             false
         }
     }
 
-    /// Returns a reference to the next token and its start location and
-    /// advances the location beyond it. Returns None and leaves the
-    /// location as-as at EOF.
-    pub fn next_token(&mut self) -> Option<&(I, L)> {
-        // Ensure that the next token is in the buffer. If this fails, return
-        // None to signal EOF.
-        if !self.make_next_available() {
-            return None;
-        }
+    /// Returns a reference to the next token (or None for EOF) and its start
+    /// location, without advancing the current location.
+    pub fn token(&mut self) -> Option<&'i I> {
+        // Ensure that the next token is in the buffer.
+        self.make_next_available();
 
-        // Advance to the next location.
-        self.index += 1;
-        self.index_in_buffer += 1;
-
-        // Return the token we just skipped past.
-        self.buffer.get(self.index_in_buffer - 1)
+        // Return the next token.
+        self.buffer[self.index_in_buffer].0
     }
 
-    /// Returns a reference to the next token and its start location
-    /// without advancing the current location. Returns None at EOF.
-    pub fn peek_token(&mut self) -> Option<&(I, L)> {
-        // Ensure that the next token is in the buffer. If this fails, return
-        // None to signal EOF.
-        if !self.make_next_available() {
-            return None;
+    /// Returns a reference to the token (or None for EOF) at the given saved
+    /// position. The index must have been created using save(), or this may
+    /// panic (the token may not be available yet or anymore).
+    pub fn token_at(&mut self, saved_state: &SavedState) -> Option<&'i I> {
+        // If the index is the next token, reduce to token().
+        if *saved_state.index == self.index {
+            return self.token();
         }
 
-        // Return the token we just skipped past.
-        self.buffer.get(self.index_in_buffer - 1)
+        // Return the requested token from the buffer.
+        assert!(*saved_state.index >= self.start_of_buffer());
+        self.buffer[*saved_state.index - self.start_of_buffer()].0
+    }
+
+    /// Returns the token index of the next token.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Returns the token index corresponding to the given saved state.
+    pub fn index_at(&self, saved_state: &SavedState) -> usize {
+        *saved_state.index
     }
 
     /// Returns the current state of the location tracker, placed at the start
     /// of the next token/end of the previous token.
-    pub fn location(&self) -> &L {
+    pub fn location_tracker(&self) -> &L {
         self.buffer
             .get(self.index_in_buffer)
             .map(|(_, x)| x)
             .unwrap_or(&self.source_location)
+    }
+
+    /// Returns the state of the location tracker as it was at the given saved
+    /// state.
+    pub fn location_tracker_at(&self, saved_state: &SavedState) -> &L {
+        // If the index is the next token, reduce to location_tracker().
+        if *saved_state.index == self.index {
+            return self.location_tracker();
+        }
+
+        // Return the requested token from the buffer.
+        assert!(*saved_state.index >= self.start_of_buffer());
+        &self.buffer[*saved_state.index - self.start_of_buffer()].1
+    }
+
+    /// Returns the current location.
+    pub fn location(&self) -> L::Location {
+        self.location_tracker().location(self.index())
+    }
+
+    /// Returns the location at the given saved state.
+    pub fn location_at(&self, saved_state: &SavedState) -> L::Location {
+        self.location_tracker_at(saved_state).location(self.index_at(saved_state))
+    }
+
+    /// Returns the span from the given saved location to the current location.
+    pub fn spanning_back_to(&mut self, saved_state: &SavedState) -> L::Span {
+        self.location_tracker_at(saved_state).spanning_to(self.index_at(saved_state), self.location_tracker(), self.index())
+    }
+
+    /// Returns whether we've reached EOF.
+    pub fn eof(&mut self) -> bool {
+        self.token().is_none()
+    }
+
+    /// Advances the parser to the next token. Returns true if successful, or
+    /// false of EOF was encountered.
+    pub fn advance(&mut self) -> bool {
+        // Ensure that the next token is in the buffer. If this fails because
+        // we encountered EOF, don't do anything.
+        if !self.make_next_available() {
+            return false;
+        }
+
+        self.index += 1;
+        self.index_in_buffer += 1;
+        true
     }
 }
