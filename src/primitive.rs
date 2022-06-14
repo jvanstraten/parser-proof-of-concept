@@ -48,7 +48,11 @@ where
         } else {
             parser::Result::Failed(
                 stream.index(),
-                E::expected_found([None], stream.token(), stream.span()),
+                vec![E::expected_found(
+                    [None],
+                    stream.token(),
+                    error::At::Location(stream.location()),
+                )],
             )
         }
     }
@@ -104,7 +108,11 @@ where
             // Construct error message.
             parser::Result::Failed(
                 successful_up_to,
-                E::expected_found([Some(self.expected)], found, span),
+                vec![E::expected_found(
+                    [Some(self.expected)],
+                    found,
+                    error::At::Span(span),
+                )],
             )
         }
     }
@@ -166,7 +174,10 @@ where
         drop(initial);
 
         // Construct error message.
-        parser::Result::Failed(successful_up_to, E::expected_found([], found, span))
+        parser::Result::Failed(
+            successful_up_to,
+            vec![E::expected_found([], found, error::At::Span(span))],
+        )
     }
 }
 
@@ -230,7 +241,10 @@ where
         drop(initial);
 
         // Construct error message.
-        parser::Result::Failed(successful_up_to, E::expected_found([], found, span))
+        parser::Result::Failed(
+            successful_up_to,
+            vec![E::expected_found([], found, error::At::Span(span))],
+        )
     }
 }
 
@@ -292,7 +306,11 @@ where
                 // Construct error message.
                 return parser::Result::Failed(
                     successful_up_to,
-                    E::expected_found([Some(expected)], found, span),
+                    vec![E::expected_found(
+                        [Some(expected)],
+                        found,
+                        error::At::Span(span),
+                    )],
                 );
             }
         }
@@ -304,6 +322,10 @@ where
 
 /// Match the given sequence of tokens exactly, returning a reference to the
 /// sequence.
+///
+/// Note: couldn't be bothered with the magic to make just() generic enough to
+/// work for single inputs as well. I'm not sure how it works in Chumsky
+/// exactly, but can't think of any reason why it wouldn't work here, too.
 pub fn seq<'i, I, O>(expected: &'i O) -> Seq<'i, I, O>
 where
     I: 'i + PartialEq,
@@ -359,7 +381,11 @@ where
         // Construct error message.
         parser::Result::Failed(
             successful_up_to,
-            E::expected_found(self.expected.into_iter().map(Some), found, span),
+            vec![E::expected_found(
+                self.expected.into_iter().map(Some),
+                found,
+                error::At::Span(span),
+            )],
         )
     }
 }
@@ -415,7 +441,7 @@ where
                     // Construct error message.
                     return parser::Result::Failed(
                         successful_up_to,
-                        E::expected_found([], Some(found), span),
+                        vec![E::expected_found([], Some(found), error::At::Span(span))],
                     );
                 }
             }
@@ -425,7 +451,14 @@ where
             parser::Result::Success(found)
         } else {
             // Found EOF.
-            parser::Result::Failed(stream.index(), E::expected_found([], None, stream.span()))
+            parser::Result::Failed(
+                stream.index(),
+                vec![E::expected_found(
+                    [],
+                    None,
+                    error::At::Location(stream.location()),
+                )],
+            )
         }
     }
 }

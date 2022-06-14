@@ -51,15 +51,9 @@ where
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         let from = stream.save();
-        match self.child.parse_internal(stream, enable_recovery) {
-            parser::Result::Success(o) => {
-                parser::Result::Success((self.map)(o, stream.spanning_back_to(&from)))
-            }
-            parser::Result::Recovered(o, es) => {
-                parser::Result::Recovered((self.map)(o, stream.spanning_back_to(&from)), es)
-            }
-            parser::Result::Failed(i, e) => parser::Result::Failed(i, e),
-        }
+        self.child
+            .parse_internal(stream, enable_recovery)
+            .map(|a| (self.map)(a, stream.spanning_back_to(&from)))
     }
 }
 
@@ -116,17 +110,60 @@ where
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         let from = stream.save();
-        match self.child.parse_internal(stream, enable_recovery) {
-            parser::Result::Success(o) => parser::Result::Success(o),
-            parser::Result::Recovered(o, es) => parser::Result::Recovered(
-                o,
-                es.into_iter()
-                    .map(|e| (self.map)(e, stream.spanning_back_to(&from)))
-                    .collect(),
-            ),
-            parser::Result::Failed(i, e) => {
-                parser::Result::Failed(i, (self.map)(e, stream.spanning_back_to(&from)))
-            }
-        }
+        self.child
+            .parse_internal(stream, enable_recovery)
+            .map_err(|e| (self.map)(e, stream.spanning_back_to(&from)))
+    }
+}
+
+/// Special result type to be returned by the function passed to
+/// [parser::Parser::try_map()], which, in addition to Ok and Err,
+/// has a variant for recoverable errors.
+pub enum TryMapResult<O, E> {
+    Ok(O),
+    Err(Vec<E>),
+    Recovered(O, Vec<E>),
+}
+
+/// See [parser::Parser::try_map()].
+pub struct TryMap<C, F> {
+    pub(crate) child: C,
+    pub(crate) map: F,
+}
+
+impl<'i, I, A, O, F, L, E, C> parser::Parser<'i, I, L, E> for TryMap<C, F>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    C: parser::Parser<'i, I, L, E, Output = A>,
+    F: Fn(A, L::Span) -> TryMapResult<O, E>,
+{
+    type Output = O;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        let initial = stream.save();
+        self.child
+            .parse_internal(stream, enable_recovery)
+            .try_map(|a| match (self.map)(a, stream.spanning_back_to(&initial)) {
+                TryMapResult::Ok(o) => parser::Result::Success(o),
+                TryMapResult::Err(es) => {
+                    assert!(!es.is_empty());
+                    stream.restore(&initial);
+                    parser::Result::Failed(stream.index_at(&initial), es)
+                }
+                TryMapResult::Recovered(o, es) => {
+                    assert!(!es.is_empty());
+                    if enable_recovery {
+                        parser::Result::Recovered(o, es)
+                    } else {
+                        parser::Result::Failed(stream.index_at(&initial), es)
+                    }
+                }
+            })
     }
 }

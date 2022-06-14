@@ -14,16 +14,26 @@ pub enum Result<O, E> {
 
     /// Parsing failed, and recovery was either disabled or also failed,
     /// yielding the index of the last token that was parsed successfully
-    /// (may also simply be 0 if nothing matched), and a single error message.
-    Failed(usize, E),
+    /// (may also simply be 0 if nothing matched), and a nonempty list of
+    /// errors.
+    Failed(usize, Vec<E>),
 }
 
-impl<O, E> From<Result<O, E>> for std::result::Result<O, E> {
+impl<O, E> From<Result<O, E>> for std::result::Result<O, E>
+where
+    E: error::Fallback,
+{
     fn from(result: Result<O, E>) -> Self {
         match result {
             Result::Success(o) => Ok(o),
-            Result::Recovered(_, mut es) => Err(es.drain(..).next().unwrap()),
-            Result::Failed(_, e) => Err(e),
+            Result::Recovered(_, mut es) => Err(es
+                .drain(..)
+                .next()
+                .unwrap_or_else(|| E::fallback("unknown error"))),
+            Result::Failed(_, mut es) => Err(es
+                .drain(..)
+                .next()
+                .unwrap_or_else(|| E::fallback("unknown error"))),
         }
     }
 }
@@ -48,7 +58,7 @@ impl<O, E> Result<O, E> {
         match self {
             Result::Success(_) => ErrorIter::None,
             Result::Recovered(_, es) => ErrorIter::Many(es, 0),
-            Result::Failed(_, e) => ErrorIter::One(e),
+            Result::Failed(_, es) => ErrorIter::Many(es, 0),
         }
     }
 
@@ -57,16 +67,35 @@ impl<O, E> Result<O, E> {
         match self {
             Result::Success(o) => Result::Success(map(o)),
             Result::Recovered(o, es) => Result::Recovered(map(o), es),
-            Result::Failed(i, e) => Result::Failed(i, e),
+            Result::Failed(i, es) => Result::Failed(i, es),
         }
     }
 
     /// Maps the errors from one type to another.
-    pub fn map_err<X, F: Fn(E) -> X>(self, map: F) -> Result<O, X> {
+    pub fn map_err<X, F: FnMut(E) -> X>(self, map: F) -> Result<O, X> {
         match self {
             Result::Success(o) => Result::Success(o),
             Result::Recovered(o, es) => Result::Recovered(o, es.into_iter().map(map).collect()),
-            Result::Failed(i, e) => Result::Failed(i, map(e)),
+            Result::Failed(i, es) => Result::Failed(i, es.into_iter().map(map).collect()),
+        }
+    }
+
+    /// Maps the tree from one type to another, in a way that may fail.
+    pub fn try_map<X, F: FnOnce(O) -> Result<X, E>>(self, map: F) -> Result<X, E> {
+        match self {
+            Result::Success(o) => map(o),
+            Result::Recovered(o, mut es) => match map(o) {
+                Result::Success(x) => Result::Success(x),
+                Result::Recovered(x, es2) => {
+                    es.extend(es2);
+                    Result::Recovered(x, es)
+                }
+                Result::Failed(i, es2) => {
+                    es.extend(es2);
+                    Result::Failed(i, es)
+                }
+            },
+            Result::Failed(i, e) => Result::Failed(i, e),
         }
     }
 }
@@ -74,7 +103,6 @@ impl<O, E> Result<O, E> {
 /// Iterator over the errors in a [Result].
 pub enum ErrorIter<'e, E> {
     None,
-    One(&'e E),
     Many(&'e [E], usize),
 }
 
@@ -84,11 +112,6 @@ impl<'e, E> Iterator for ErrorIter<'e, E> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             ErrorIter::None => None,
-            ErrorIter::One(e) => {
-                let e = *e;
-                *self = Self::None;
-                Some(e)
-            }
             ErrorIter::Many(es, i) => {
                 if *i >= es.len() {
                     None
@@ -234,5 +257,22 @@ where
             map,
             phantom: Default::default(),
         }
+    }
+
+    /// Maps the output type of the current parser along with the span of
+    /// tokens that it matched to a different type and/or errors using the
+    /// given function.
+    ///
+    /// The result type ([combinator::TryMapResult]) is more powerful than the
+    /// typical [std::result::Result]: it allows multiple errors to be
+    /// specified at once, and also allows errors that were recovered from to
+    /// be specified.
+    ///
+    /// Note: pretty sure this also replaces Chumsky's validate().
+    fn try_map<O, F>(self, map: F) -> combinator::TryMap<Self, F>
+    where
+        F: Fn(Self::Output, L::Span) -> combinator::TryMapResult<O, E>,
+    {
+        combinator::TryMap { child: self, map }
     }
 }
