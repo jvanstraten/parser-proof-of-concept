@@ -136,7 +136,6 @@ where
     I: 'i,
     L: location::LocationTracker<I>,
     E: error::Error<'i, I, L>,
-    Self: Sized,
 {
     /// The parse tree type returned by the parser.
     type Output;
@@ -171,6 +170,7 @@ where
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
+        Self: Sized,
     {
         let mut stream = stream::Stream::new_with_location(source, start_location);
         self.parse_internal(&mut stream, true)
@@ -186,6 +186,7 @@ where
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
+        Self: Sized,
     {
         self.parse_with_recovery_and_location(source, start_location)
             .into()
@@ -198,6 +199,7 @@ where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
         L: Default,
+        Self: Sized,
     {
         self.parse_with_recovery_and_location(source, L::default())
     }
@@ -209,6 +211,7 @@ where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
         L: Default,
+        Self: Sized,
     {
         self.parse_with_recovery(source).into()
     }
@@ -218,12 +221,16 @@ where
     fn to<O>(self, to: O) -> combinator::To<Self, O>
     where
         O: Clone,
+        Self: Sized,
     {
         combinator::To { child: self, to }
     }
 
     /// Maps the output of the current parser to ().
-    fn ignored<O>(self) -> combinator::Ignored<Self> {
+    fn ignored<O>(self) -> combinator::Ignored<Self>
+    where
+        Self: Sized,
+    {
         combinator::To {
             child: self,
             to: (),
@@ -235,6 +242,7 @@ where
     fn map<O, F>(self, map: F) -> combinator::Map<Self, F>
     where
         F: Fn(Self::Output) -> O,
+        Self: Sized,
     {
         combinator::Map { child: self, map }
     }
@@ -244,6 +252,7 @@ where
     fn map_with_span<O, F>(self, map: F) -> combinator::MapWithSpan<Self, F>
     where
         F: Fn(Self::Output, L::Span) -> O,
+        Self: Sized,
     {
         combinator::MapWithSpan { child: self, map }
     }
@@ -254,6 +263,7 @@ where
     where
         F: Fn(E) -> X,
         X: error::Error<'i, I, L>,
+        Self: Sized,
     {
         combinator::MapErr {
             child: self,
@@ -268,6 +278,7 @@ where
     where
         F: Fn(E, L::Span) -> X,
         X: error::Error<'i, I, L>,
+        Self: Sized,
     {
         combinator::MapErrWithSpan {
             child: self,
@@ -289,8 +300,20 @@ where
     fn try_map<O, F>(self, map: F) -> combinator::TryMap<Self, F>
     where
         F: Fn(Self::Output, L::Span) -> combinator::TryMapResult<O, E>,
+        Self: Sized,
     {
         combinator::TryMap { child: self, map }
+    }
+
+    /// Returns this parser in a box, giving a consistent type regardless of
+    /// the contained parser.
+    fn boxed(self) -> combinator::Boxed<'i, I, Self::Output, L, E>
+    where
+        Self: Sized + 'i,
+    {
+        combinator::Boxed {
+            parser: Box::new(self),
+        }
     }
 
     /// Parses the concatenation of the current and the given parser, yielding
@@ -298,6 +321,7 @@ where
     fn then<B>(self, b: B) -> combinator::Then<Self, B>
     where
         B: Parser<'i, I, L, E>,
+        Self: Sized,
     {
         combinator::Then { a: self, b }
     }
@@ -307,6 +331,7 @@ where
     fn then_ignore<B>(self, b: B) -> combinator::ThenIgnore<Self, B>
     where
         B: Parser<'i, I, L, E>,
+        Self: Sized,
     {
         combinator::ThenIgnore { a: self, b }
     }
@@ -316,6 +341,7 @@ where
     fn ignore_then<B>(self, b: B) -> combinator::IgnoreThen<Self, B>
     where
         B: Parser<'i, I, L, E>,
+        Self: Sized,
     {
         combinator::IgnoreThen { a: self, b }
     }
@@ -326,6 +352,7 @@ where
     where
         A: Parser<'i, I, L, E>,
         B: Parser<'i, I, L, E>,
+        Self: Sized,
     {
         combinator::DelimitedBy {
             left,
@@ -339,10 +366,25 @@ where
     fn padded_by<A>(self, padding: A) -> combinator::PaddedBy<A, Self>
     where
         A: Parser<'i, I, L, E>,
+        Self: Sized,
     {
         combinator::PaddedBy {
             padding,
             middle: self,
         }
     }
+    /*
+    /// Parses the concatenation of the current and given parser, returning the
+    /// two results as an array. The return types of the two parsers must thus
+    /// match. Consecutive calls to array() will extend the array.
+    fn array<A>(self, other: A) -> combinator::Array<A, 2>
+    where
+        A: Parser<'i, I, L, E>,
+        Self: Sized,
+    {
+        combinator::Array {
+            parsers: vec![self, other],
+            middle: self,
+        }
+    }*/
 }

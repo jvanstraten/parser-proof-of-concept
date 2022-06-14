@@ -263,6 +263,28 @@ macro_rules! concat_parsers {
     }};
 }
 
+/// See [parser::Parser::boxed()].
+pub struct Boxed<'i, I, O, L, E> {
+    pub parser: Box<dyn parser::Parser<'i, I, L, E, Output = O> + 'i>,
+}
+
+impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for Boxed<'i, I, O, L, E>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+{
+    type Output = O;
+
+    fn parse_internal(
+        &self,
+        stream: &mut crate::stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        self.parser.parse_internal(stream, enable_recovery)
+    }
+}
+
 /// See [parser::Parser::then()].
 pub struct Then<A, B> {
     pub(crate) a: A,
