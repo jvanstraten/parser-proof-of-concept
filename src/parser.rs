@@ -1,6 +1,6 @@
+use super::error;
 use super::location;
 use super::stream;
-use super::error;
 
 /// Result of a parser.
 pub enum Result<O, E> {
@@ -28,16 +28,17 @@ impl<O, E> From<Result<O, E>> for std::result::Result<O, E> {
 }
 
 /// Main parser trait.
-/// 
+///
 ///  - 'i: lifetime of the input tokens
 ///  - I: type of an input token
 ///  - L: location tracker instance
 ///  - E: error type
-pub trait Parser<'i, I, L, E>
+pub trait Parser<'i, I, L, E, T>
 where
     I: 'i,
     L: location::LocationTracker<I>,
     E: error::Error<'i, I, L>,
+    T: Iterator<Item = &'i I>,
 {
     /// The type returned by the parser.
     type Output;
@@ -57,38 +58,40 @@ where
     /// (Ok(), vec![E, ...]).
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<I, L>,
+        stream: &mut stream::Stream<'i, I, L, T>,
         enable_recovery: bool,
     ) -> Result<Self::Output, E>;
 
     /// Parse the given source of tokens, starting from the given location.
     /// Return the (potentially recovered) parse tree and the list of errors
     /// produced while parsing.
-    fn parse_with_recovery_and_location<J>(&self, source: J, start_location: L) -> Result<Self::Output, E>
-    where
-        J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'static,
-    {
+    fn parse_with_recovery_and_location(
+        &self,
+        source: impl IntoIterator<Item = &'i I, IntoIter = T>,
+        start_location: L,
+    ) -> Result<Self::Output, E> {
         let mut stream = stream::Stream::new_with_location(source, start_location);
         self.parse_internal(&mut stream, true)
     }
 
     /// Parse the given source of tokens, starting from the given location.
     /// Return the parse tree or the first error.
-    fn parse_with_location<J>(&self, source: J, start_location: L) -> std::result::Result<Self::Output, E>
-    where
-        J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'static,
-    {
-        self.parse_with_recovery_and_location(source, start_location).into()
+    fn parse_with_location(
+        &self,
+        source: impl IntoIterator<Item = &'i I, IntoIter = T>,
+        start_location: L,
+    ) -> std::result::Result<Self::Output, E> {
+        self.parse_with_recovery_and_location(source, start_location)
+            .into()
     }
 
     /// Parse the given source of tokens. Return the (potentially recovered)
     /// parse tree and the list of errors produced while parsing.
-    fn parse_with_recovery<J>(&self, source: J) -> Result<Self::Output, E>
+    fn parse_with_recovery(
+        &self,
+        source: impl IntoIterator<Item = &'i I, IntoIter = T>,
+    ) -> Result<Self::Output, E>
     where
-        J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'static,
         L: Default,
     {
         self.parse_with_recovery_and_location(source, L::default())
@@ -96,10 +99,11 @@ where
 
     /// Parse the given source of tokens. Return the parse tree or the first
     /// error.
-    fn parse<J>(&self, source: J) -> std::result::Result<Self::Output, E>
+    fn parse(
+        &self,
+        source: impl IntoIterator<Item = &'i I, IntoIter = T>,
+    ) -> std::result::Result<Self::Output, E>
     where
-        J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'static,
         L: Default,
     {
         self.parse_with_recovery(source).into()

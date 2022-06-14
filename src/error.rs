@@ -73,4 +73,3 @@ where
         Self::Custom(message.to_string())
     }
 }
-

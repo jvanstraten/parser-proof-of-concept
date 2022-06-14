@@ -3,18 +3,19 @@ use std::collections::VecDeque;
 
 /// Opaque object representing a saved stream state.
 pub struct SavedState {
-    index: std::rc::Rc<usize>
+    index: std::rc::Rc<usize>,
 }
 
 /// A stream of tokens that can backtrack to arbitrary positions that were
 /// previously saved.
-pub struct Stream<'i, I, L>
+pub struct Stream<'i, I, L, T>
 where
     I: 'i,
     L: location::LocationTracker<I>,
+    T: Iterator<Item = &'i I>,
 {
     /// Iterator representing the source of the tokens.
-    source: Box<dyn Iterator<Item = &'i I>>,
+    source: T,
 
     /// Whether the source iterator has returned None.
     source_at_eof: bool,
@@ -40,21 +41,20 @@ where
     backtrack_markers: Vec<std::rc::Weak<usize>>,
 }
 
-impl<'i, I, L> Stream<'i, I, L>
+impl<'i, I, L, T> Stream<'i, I, L, T>
 where
     I: 'i,
     L: location::LocationTracker<I>,
+    T: Iterator<Item = &'i I>,
 {
     /// Constructs a token stream from an iterable, using the default start
     /// location.
-    pub fn new<J>(source: J) -> Self
+    pub fn new(source: impl IntoIterator<Item = &'i I, IntoIter = T>) -> Self
     where
-        J: IntoIterator<Item = &'i I>,
-        <J as IntoIterator>::IntoIter: 'static,
         L: Default,
     {
         Self {
-            source: Box::new(source.into_iter()),
+            source: source.into_iter(),
             source_at_eof: false,
             source_location: Default::default(),
             buffer: VecDeque::new(),
@@ -65,13 +65,12 @@ where
     }
 
     /// Constructs a token stream from an iterable and an initial start location.
-    pub fn new_with_location<J>(source: J, start_location: L) -> Self
-    where
-        J: IntoIterator<Item = &'i I>,
-        <J as IntoIterator>::IntoIter: 'static,
-    {
+    pub fn new_with_location(
+        source: impl IntoIterator<Item = &'i I, IntoIter = T>,
+        start_location: L,
+    ) -> Self {
         Self {
-            source: Box::new(source.into_iter()),
+            source: source.into_iter(),
             source_at_eof: false,
             source_location: start_location,
             buffer: VecDeque::new(),
@@ -243,12 +242,17 @@ where
 
     /// Returns the location at the given saved state.
     pub fn location_at(&self, saved_state: &SavedState) -> L::Location {
-        self.location_tracker_at(saved_state).location(self.index_at(saved_state))
+        self.location_tracker_at(saved_state)
+            .location(self.index_at(saved_state))
     }
 
     /// Returns the span from the given saved location to the current location.
     pub fn spanning_back_to(&mut self, saved_state: &SavedState) -> L::Span {
-        self.location_tracker_at(saved_state).spanning_to(self.index_at(saved_state), self.location_tracker(), self.index())
+        self.location_tracker_at(saved_state).spanning_to(
+            self.index_at(saved_state),
+            self.location_tracker(),
+            self.index(),
+        )
     }
 
     /// Returns whether we've reached EOF.
