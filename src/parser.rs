@@ -213,6 +213,23 @@ where
         self.parse_with_recovery(source).into()
     }
 
+    /// Maps the output of the current parser to clones of the given object.
+    /// Simply pass an immutable reference to avoid cloning.
+    fn to<O>(self, to: O) -> combinator::To<Self, O>
+    where
+        O: Clone,
+    {
+        combinator::To { child: self, to }
+    }
+
+    /// Maps the output of the current parser to ().
+    fn ignored<O>(self) -> combinator::Ignored<Self> {
+        combinator::To {
+            child: self,
+            to: (),
+        }
+    }
+
     /// Maps the output type of the current parser to a different type using
     /// the given function.
     fn map<O, F>(self, map: F) -> combinator::Map<Self, F>
@@ -274,5 +291,58 @@ where
         F: Fn(Self::Output, L::Span) -> combinator::TryMapResult<O, E>,
     {
         combinator::TryMap { child: self, map }
+    }
+
+    /// Parses the concatenation of the current and the given parser, yielding
+    /// their results as a two-tuple.
+    fn then<B>(self, b: B) -> combinator::Then<Self, B>
+    where
+        B: Parser<'i, I, L, E>,
+    {
+        combinator::Then { a: self, b }
+    }
+
+    /// Parses the concatenation of the current and the given parser, yielding
+    /// the result of the first one.
+    fn then_ignore<B>(self, b: B) -> combinator::ThenIgnore<Self, B>
+    where
+        B: Parser<'i, I, L, E>,
+    {
+        combinator::ThenIgnore { a: self, b }
+    }
+
+    /// Parses the concatenation of the current and the given parser, yielding
+    /// the result of the second one.
+    fn ignore_then<B>(self, b: B) -> combinator::IgnoreThen<Self, B>
+    where
+        B: Parser<'i, I, L, E>,
+    {
+        combinator::IgnoreThen { a: self, b }
+    }
+
+    /// Parses the concatenation of the left, current, and right parsers,
+    /// yielding the result of the current one.
+    fn delimited_by<A, B>(self, left: A, right: B) -> combinator::DelimitedBy<A, Self, B>
+    where
+        A: Parser<'i, I, L, E>,
+        B: Parser<'i, I, L, E>,
+    {
+        combinator::DelimitedBy {
+            left,
+            middle: self,
+            right,
+        }
+    }
+
+    /// Parses the concatenation of the padding, current, and padding (again)
+    /// parsers, yielding the result of the current one.
+    fn padded_by<A>(self, padding: A) -> combinator::PaddedBy<A, Self>
+    where
+        A: Parser<'i, I, L, E>,
+    {
+        combinator::PaddedBy {
+            padding,
+            middle: self,
+        }
     }
 }
