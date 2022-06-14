@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use super::algorithm;
 use super::error;
 use super::location;

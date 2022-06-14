@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /// Representation of a source location. You can use this to track the
 /// location in a more advanced way than just the token index (which the
 /// parser tracks on its own). Note however that it's cloned a lot, so if

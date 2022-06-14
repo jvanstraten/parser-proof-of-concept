@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #[macro_use]
 mod algorithm;
 pub mod combinator;
@@ -7,7 +9,3 @@ pub mod parser;
 pub mod prelude;
 pub mod primitive;
 pub mod stream;
-
-fn main() {
-    println!("Hello, world!");
-}

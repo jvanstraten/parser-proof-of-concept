@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 pub use super::combinator::*;
 pub use super::error::Error;
 pub use super::error::Simple as SimpleError;
