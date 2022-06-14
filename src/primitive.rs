@@ -2,18 +2,15 @@ use super::error;
 use super::location;
 use super::parser;
 
-pub struct Just<'i, I, O, L, E>
+pub struct Just<'i, I, O>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
 {
     expected: &'i O,
-    phantom: std::marker::PhantomData<(L, E)>,
 }
 
-impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for Just<'i, I, O, L, E>
+impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for Just<'i, I, O>
 where
     I: 'i + PartialEq,
     O: Clone,
@@ -61,16 +58,11 @@ where
     }
 }
 
-pub fn just<'i, I, O, L, E>(expected: &'i O) -> Just<'i, I, O, L, E>
+pub fn just<'i, I, O>(expected: &'i O) -> Just<'i, I, O>
 where
     I: 'i + PartialEq,
     O: Clone,
     &'i O: IntoIterator<Item = &'i I>,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
 {
-    Just {
-        expected,
-        phantom: std::marker::PhantomData::default(),
-    }
+    Just { expected }
 }
