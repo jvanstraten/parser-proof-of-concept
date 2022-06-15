@@ -29,6 +29,10 @@ where
             At::Span(s) => At::Span(s),
         }
     }
+
+    pub fn is_known(&self) -> bool {
+        !matches!(self, At::None)
+    }
 }
 
 impl<L, S> std::fmt::Display for At<L, S>
@@ -37,10 +41,18 @@ where
     S: std::fmt::Display + PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            At::None => Ok(()),
-            At::Location(l) => write!(f, " at {l}"),
-            At::Span(s) => write!(f, " at {s}"),
+        if f.alternate() {
+            match self {
+                At::None => write!(f, "<unknown>"),
+                At::Location(l) => write!(f, "{l}"),
+                At::Span(s) => write!(f, "{s}"),
+            }
+        } else {
+            match self {
+                At::None => Ok(()),
+                At::Location(l) => write!(f, " at {l}"),
+                At::Span(s) => write!(f, " at {s}"),
+            }
         }
     }
 }
@@ -71,6 +83,28 @@ where
     /// Returns the location information associated with this error, if any.
     fn location(&self) -> At<&L::Location, &L::Span>;
 
+    /// Constructor for an unmatched left delimiter error.
+    fn unmatched_left_delimiter(
+        left_token: &'i I,
+        left_span: L::Span,
+        close_before: At<L::Location, L::Span>,
+    ) -> Self;
+
+    /// Constructor for an unmatched right delimiter error.
+    fn unmatched_right_delimiter(
+        right_token: &'i I,
+        right_span: L::Span,
+        open_before: At<L::Location, L::Span>,
+    ) -> Self;
+
+    /// Constructor for an unmatched delimiter type error.
+    fn unmatched_delimiter_type(
+        left_token: &'i I,
+        left_span: L::Span,
+        right_token: &'i I,
+        right_span: L::Span,
+    ) -> Self;
+
     /// Constructor for a custom message with a location.
     fn custom<M: ToString>(msg: M, at: At<L::Location, L::Span>) -> Self;
 }
@@ -79,7 +113,7 @@ where
 /// generics are available.
 pub trait Fallback {
     /// Constructor for a custom message without location data.
-    fn fallback<M: ToString>(msg: M) -> Self;
+    fn simple<M: ToString>(msg: M) -> Self;
 }
 
 /// Simple error message type.
@@ -93,6 +127,15 @@ where
         Option<&'i I>,
         At<L::Location, L::Span>,
     ),
+
+    /// Unmatched left delimiter error.
+    UnmatchedLeftDelimiter(&'i I, L::Span, At<L::Location, L::Span>),
+
+    /// Unmatched right delimiter error.
+    UnmatchedRightDelimiter(&'i I, L::Span, At<L::Location, L::Span>),
+
+    /// Unmatched delimiter type error.
+    UnmatchedDelimiterType(&'i I, L::Span, &'i I, L::Span),
 
     /// Custom error message.
     Custom(String, At<L::Location, L::Span>),
@@ -124,8 +167,36 @@ where
     fn location(&self) -> At<&L::Location, &L::Span> {
         match self {
             Simple::ExpectedFound(_, _, l) => l.as_ref(),
+            Simple::UnmatchedLeftDelimiter(_, _, l) => l.as_ref(),
+            Simple::UnmatchedRightDelimiter(_, _, l) => l.as_ref(),
+            Simple::UnmatchedDelimiterType(_, _, _, s) => At::Span(s),
             Simple::Custom(_, l) => l.as_ref(),
         }
+    }
+
+    fn unmatched_left_delimiter(
+        left_token: &'i I,
+        left_span: L::Span,
+        close_before: At<L::Location, L::Span>,
+    ) -> Self {
+        Simple::UnmatchedLeftDelimiter(left_token, left_span, close_before)
+    }
+
+    fn unmatched_right_delimiter(
+        right_token: &'i I,
+        right_span: L::Span,
+        open_before: At<L::Location, L::Span>,
+    ) -> Self {
+        Simple::UnmatchedRightDelimiter(right_token, right_span, open_before)
+    }
+
+    fn unmatched_delimiter_type(
+        left_token: &'i I,
+        left_span: L::Span,
+        right_token: &'i I,
+        right_span: L::Span,
+    ) -> Self {
+        Simple::UnmatchedDelimiterType(left_token, left_span, right_token, right_span)
     }
 
     fn custom<M: ToString>(msg: M, at: At<L::Location, L::Span>) -> Self {
@@ -137,7 +208,7 @@ impl<'i, I, L> Fallback for Simple<'i, I, L>
 where
     L: location::LocationTracker<I>,
 {
-    fn fallback<M: ToString>(msg: M) -> Self {
+    fn simple<M: ToString>(msg: M) -> Self {
         Self::Custom(msg.to_string(), At::None)
     }
 }
@@ -176,6 +247,23 @@ where
                     None => write!(f, " EOF")?,
                 };
                 write!(f, "{at}")
+            }
+            Simple::UnmatchedLeftDelimiter(lt, ls, before) => {
+                write!(f, "unmatched left {lt} ({ls})")?;
+                if before.is_known() {
+                    write!(f, "; must be closed before {before}")?;
+                }
+                Ok(())
+            }
+            Simple::UnmatchedRightDelimiter(rt, rs, after) => {
+                write!(f, "unmatched right {rt} ({rs})")?;
+                if after.is_known() {
+                    write!(f, "; must be opened after {after}")?;
+                }
+                Ok(())
+            }
+            Simple::UnmatchedDelimiterType(lt, ls, rt, rs) => {
+                write!(f, "left {lt} ({ls}) does not match right {rt} ({rs})")
             }
             Simple::Custom(msg, at) => {
                 write!(f, "{msg}{at}")

@@ -5,6 +5,8 @@ use super::error;
 use super::location;
 use super::parser;
 use super::primitive;
+use super::recovery;
+use super::stream;
 
 /// See [parser::Parser::boxed()].
 pub struct Boxed<'i, I, O, L, E> {
@@ -21,7 +23,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         self.parser.parse_internal(stream, enable_recovery)
@@ -46,7 +48,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         self.child
@@ -74,7 +76,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         self.child.parse_internal(stream, enable_recovery).map(Some)
@@ -99,7 +101,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         self.child
@@ -126,7 +128,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         let from = stream.save();
@@ -156,7 +158,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         self.child
@@ -185,7 +187,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         let from = stream.save();
@@ -222,7 +224,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         let initial = stream.save();
@@ -265,7 +267,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         concatenate!(stream, enable_recovery, |x| x, self.a, self.b)
@@ -290,7 +292,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         concatenate!(stream, enable_recovery, |(a, _b)| a, self.a, self.b)
@@ -315,7 +317,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         concatenate!(stream, enable_recovery, |(_a, b)| b, self.a, self.b)
@@ -342,7 +344,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         concatenate!(
@@ -374,7 +376,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         concatenate!(
@@ -404,7 +406,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         algorithm::concatenate(stream, enable_recovery, &self.parsers)
@@ -446,7 +448,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         alternate!(stream, enable_recovery, &self.a, &self.b)
@@ -469,7 +471,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         alternate!(stream, enable_recovery, &self.a, &primitive::none::<O>())
@@ -492,7 +494,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         algorithm::alternate(stream, enable_recovery, &self.parsers)
@@ -537,7 +539,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         algorithm::repeat(
@@ -597,3 +599,57 @@ impl<A, B> Repeated<A, B> {
 
 /// See [parser::Parser::separated_by()].
 pub type SeparatedBy<A, B> = Repeated<A, B>;
+
+/// See [parser::Parser::recover_with()].
+pub struct RecoverWith<A, S> {
+    pub(crate) parser: A,
+    pub(crate) strategy: S,
+}
+
+impl<'i, I, L, E, A, S> parser::Parser<'i, I, L, E> for RecoverWith<A, S>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    A: parser::Parser<'i, I, L, E>,
+    S: recovery::Strategy<'i, I, L, E, A>,
+{
+    type Output = A::Output;
+
+    fn parse_internal(
+        &self,
+        stream: &mut stream::Stream<'i, I, L>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        match self.parser.parse_internal(stream, enable_recovery) {
+            parser::Result::Failed(last_token_matched, mut errors) => {
+                if !enable_recovery {
+                    // Recovery disabled, don't run recovery strategy.
+                    parser::Result::Failed(last_token_matched, errors)
+                } else {
+                    let started_at = stream.save();
+                    let mut failed_at = stream.save_at(last_token_matched);
+                    let recovery = recovery::Strategy::recover(
+                        &self.strategy,
+                        &self.parser,
+                        stream,
+                        &started_at,
+                        &mut failed_at,
+                        &mut errors,
+                    );
+                    if let Some(output) = recovery {
+                        // Recovery successful.
+                        parser::Result::Recovered(output, errors)
+                    } else {
+                        // Recovery failed, but note that `errors` may have been
+                        // modified by the recovery strategy.
+                        parser::Result::Failed(last_token_matched, errors)
+                    }
+                }
+            }
+            // Don't run recovery if the parser was successful (obviously) or
+            // if a previous recovery strategy was already successful.
+            r => r,
+        }
+    }
+}

@@ -3,6 +3,7 @@
 use super::combinator;
 use super::error;
 use super::location;
+use super::recovery;
 use super::stream;
 
 /// Result of a parser.
@@ -31,11 +32,11 @@ where
             Result::Recovered(_, mut es) => Err(es
                 .drain(..)
                 .next()
-                .unwrap_or_else(|| E::fallback("unknown error"))),
+                .unwrap_or_else(|| E::simple("unknown error"))),
             Result::Failed(_, mut es) => Err(es
                 .drain(..)
                 .next()
-                .unwrap_or_else(|| E::fallback("unknown error"))),
+                .unwrap_or_else(|| E::simple("unknown error"))),
         }
     }
 }
@@ -471,6 +472,18 @@ where
             separator: Some(separator),
             allow_leading: false,
             allow_trailing: false,
+        }
+    }
+
+    /// If the parser fails, attempt to recover using the given strategy.
+    fn recover_with<S>(self, strategy: S) -> combinator::RecoverWith<Self, S>
+    where
+        Self: Sized,
+        S: recovery::Strategy<'i, I, L, E, Self>,
+    {
+        combinator::RecoverWith {
+            parser: self,
+            strategy,
         }
     }
 }

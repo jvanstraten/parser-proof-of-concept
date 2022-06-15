@@ -3,6 +3,7 @@
 use super::error;
 use super::location;
 use super::parser;
+use super::stream;
 
 /// See [empty()].
 pub struct Empty();
@@ -17,7 +18,7 @@ where
 
     fn parse_internal(
         &self,
-        _stream: &mut crate::stream::Stream<'i, I, L>,
+        _stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         parser::Result::Success(())
@@ -44,7 +45,7 @@ where
 
     fn parse_internal(
         &self,
-        _stream: &mut crate::stream::Stream<'i, I, L>,
+        _stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         parser::Result::Success(None)
@@ -72,7 +73,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         if stream.eof() {
@@ -113,13 +114,9 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        // Save the initial parser state, so we can restore it if we encounter
-        // an error.
-        let initial = stream.save();
-
         // Match the incoming token.
         let found = stream.token();
         if found == Some(self.expected) {
@@ -127,23 +124,13 @@ where
             stream.advance();
             parser::Result::Success(self.expected)
         } else {
-            // Get error information from the stream, then restore it to
-            // the initial position.
-            let successful_up_to = stream.index();
-            let from = stream.save();
-            stream.advance();
-            let span = stream.spanning_back_to(&from);
-            drop(from);
-            stream.restore(&initial);
-            drop(initial);
-
             // Construct error message.
             parser::Result::Failed(
-                successful_up_to,
+                stream.index(),
                 vec![E::expected_found(
                     [Some(self.expected)],
                     found,
-                    error::At::Span(span),
+                    error::At::Span(stream.span()),
                 )],
             )
         }
@@ -178,38 +165,26 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        // Save the initial parser state, so we can restore it if we encounter
-        // an error.
-        let initial = stream.save();
-
-        // Match the incoming token.
-        let found = stream.token();
-        if let Some(found) = found {
-            if (self.filter)(found) {
-                // Matched successfully, skip past it and return success.
-                stream.advance();
-                return parser::Result::Success(found);
+        stream.attempt(|stream| {
+            // Match the incoming token.
+            let found = stream.token();
+            if let Some(found) = found {
+                if (self.filter)(found) {
+                    // Matched successfully, skip past it and return success.
+                    stream.advance();
+                    return Ok(parser::Result::Success(found));
+                }
             }
-        }
 
-        // Get error information from the stream, then restore it to
-        // the initial position.
-        let successful_up_to = stream.index();
-        let from = stream.save();
-        stream.advance();
-        let span = stream.spanning_back_to(&from);
-        drop(from);
-        stream.restore(&initial);
-        drop(initial);
-
-        // Construct error message.
-        parser::Result::Failed(
-            successful_up_to,
-            vec![E::expected_found([], found, error::At::Span(span))],
-        )
+            // Construct error message.
+            Err(parser::Result::Failed(
+                stream.index(),
+                vec![E::expected_found([], found, error::At::Span(stream.span()))],
+            ))
+        })
     }
 }
 
@@ -245,13 +220,9 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        // Save the initial parser state, so we can restore it if we encounter
-        // an error.
-        let initial = stream.save();
-
         // Match the incoming token.
         let found = stream.token();
         if let Some(found) = found {
@@ -262,20 +233,10 @@ where
             }
         }
 
-        // Get error information from the stream, then restore it to
-        // the initial position.
-        let successful_up_to = stream.index();
-        let from = stream.save();
-        stream.advance();
-        let span = stream.spanning_back_to(&from);
-        drop(from);
-        stream.restore(&initial);
-        drop(initial);
-
         // Construct error message.
         parser::Result::Failed(
-            successful_up_to,
-            vec![E::expected_found([], found, error::At::Span(span))],
+            stream.index(),
+            vec![E::expected_found([], found, error::At::Span(stream.span()))],
         )
     }
 }
@@ -312,43 +273,31 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        // Save the initial parser state, so we can restore it if we encounter
-        // an error.
-        let initial = stream.save();
-
-        // Match concatenation of tokens returned by expected.
-        for expected in self.expected.into_iter() {
-            let found = stream.token();
-            if found == Some(expected) {
-                stream.advance();
-            } else {
-                // Get error information from the stream, then restore it to
-                // the initial position.
-                let successful_up_to = stream.index();
-                let from = stream.save();
-                stream.advance();
-                let span = stream.spanning_back_to(&from);
-                drop(from);
-                stream.restore(&initial);
-                drop(initial);
-
-                // Construct error message.
-                return parser::Result::Failed(
-                    successful_up_to,
-                    vec![E::expected_found(
-                        [Some(expected)],
-                        found,
-                        error::At::Span(span),
-                    )],
-                );
+        stream.attempt(|stream| {
+            // Match concatenation of tokens returned by expected.
+            for expected in self.expected.into_iter() {
+                let found = stream.token();
+                if found == Some(expected) {
+                    stream.advance();
+                } else {
+                    // Construct error message.
+                    return Err(parser::Result::Failed(
+                        stream.index(),
+                        vec![E::expected_found(
+                            [Some(expected)],
+                            found,
+                            error::At::Span(stream.span()),
+                        )],
+                    ));
+                }
             }
-        }
 
-        // All elements were matched successfully.
-        parser::Result::Success(self.expected)
+            // All elements were matched successfully.
+            Ok(parser::Result::Success(self.expected))
+        })
     }
 }
 
@@ -386,7 +335,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Get the next token from the input stream, and match it against the
@@ -401,22 +350,13 @@ where
             }
         }
 
-        // Get error information from the stream, then restore it to
-        // the initial position.
-        let successful_up_to = stream.index();
-        let from = stream.save();
-        stream.advance();
-        let span = stream.spanning_back_to(&from);
-        stream.restore(&from);
-        drop(from);
-
         // Construct error message.
         parser::Result::Failed(
-            successful_up_to,
+            stream.index(),
             vec![E::expected_found(
                 self.expected.into_iter().map(Some),
                 found,
-                error::At::Span(span),
+                error::At::Span(stream.span()),
             )],
         )
     }
@@ -452,7 +392,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, L>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Get the next token from the input stream, and match it against the
@@ -461,19 +401,14 @@ where
         if let Some(found) = found {
             for expected in self.rejected.into_iter() {
                 if found == expected {
-                    // Get error information from the stream, then restore it to
-                    // the initial position.
-                    let successful_up_to = stream.index();
-                    let from = stream.save();
-                    stream.advance();
-                    let span = stream.spanning_back_to(&from);
-                    stream.restore(&from);
-                    drop(from);
-
                     // Construct error message.
                     return parser::Result::Failed(
-                        successful_up_to,
-                        vec![E::expected_found([], Some(found), error::At::Span(span))],
+                        stream.index(),
+                        vec![E::expected_found(
+                            [],
+                            Some(found),
+                            error::At::Span(stream.span()),
+                        )],
                     );
                 }
             }

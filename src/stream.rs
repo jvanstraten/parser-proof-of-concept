@@ -102,6 +102,16 @@ where
         SavedState { index }
     }
 
+    /// Saves the location at the given current or future token index. Panics if
+    /// the given token index lies before the current one.
+    pub fn save_at(&mut self, index: usize) -> SavedState {
+        let restore = (self.index, self.index_in_buffer);
+        self.advance_to(index);
+        let state = self.save();
+        (self.index, self.index_in_buffer) = restore;
+        state
+    }
+
     /// Restores a location that was previously saved.
     pub fn restore(&mut self, saved_state: &SavedState) {
         assert!(*saved_state.index <= self.index);
@@ -109,6 +119,22 @@ where
         assert!(amount >= self.index_in_buffer);
         self.index_in_buffer -= amount;
         self.index -= amount;
+    }
+
+    /// Executes the given function in such a way that restoring the state of
+    /// the parser on failure cannot be accidentally forgotten: when the inner
+    /// function returns Err, the stream state will be restored to what it was
+    /// prior to the call. If the inner function returns Ok, the state is not
+    /// restored.
+    pub fn attempt<R, F: FnOnce(&mut Self) -> Result<R, R>>(&mut self, f: F) -> R {
+        let saved_state = self.save();
+        match f(self) {
+            Ok(r) => r,
+            Err(r) => {
+                self.restore(&saved_state);
+                r
+            }
+        }
     }
 
     /// Returns the token index of the first token in the buffer.
@@ -249,6 +275,18 @@ where
             .location(self.index_at(saved_state))
     }
 
+    /// Returns the span for the next token.
+    pub fn span(&mut self) -> L::Span {
+        let mut end = self.location_tracker().clone();
+        let mut end_index = self.index();
+        if let Some(token) = self.token() {
+            end.advance(token);
+            end_index += 1;
+        }
+        self.location_tracker()
+            .spanning_to(self.index(), &end, end_index)
+    }
+
     /// Returns the span from the given saved location to the current location.
     pub fn spanning_back_to(&mut self, saved_state: &SavedState) -> L::Span {
         self.location_tracker_at(saved_state).spanning_to(
@@ -274,6 +312,41 @@ where
 
         self.index += 1;
         self.index_in_buffer += 1;
+        true
+    }
+
+    /// Advances the parser to the given token index. Returns true if
+    /// successful, returns false if EOF was encountered while advancing, or
+    /// panics if the given index lies before the current position (use
+    /// save/restore for that!).
+    pub fn advance_to(&mut self, index: usize) -> bool {
+        // If we're already at the given index, do nothing.
+        if index <= self.index {
+            assert!(index == self.index);
+            return true;
+        }
+
+        // Determine how many tokens we need to advance by.
+        let mut amount = index - self.index;
+
+        // Determine how many tokens we can advance by without refilling the
+        // buffer, and do that.
+        let already_buffered = usize::min(self.buffer.len() - self.index_in_buffer, amount);
+        self.index += already_buffered;
+        self.index_in_buffer += already_buffered;
+        amount -= already_buffered;
+        if amount == 0 {
+            return true;
+        }
+
+        // Do the rest by calling advance() repeatedly.
+        while amount > 0 {
+            if !self.advance() {
+                return false;
+            }
+            amount -= 1;
+        }
+
         true
     }
 }
