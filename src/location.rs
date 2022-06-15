@@ -25,7 +25,7 @@ pub trait LocationTracker<I>: Clone {
 
 /// The simplest form of location is just a usize index, with Range<usize>
 /// as the span type.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Simple();
 
 impl<I> LocationTracker<I> for Simple {
@@ -44,6 +44,7 @@ impl<I> LocationTracker<I> for Simple {
 }
 
 /// A location that tracks source file and row/column/byte location.
+#[derive(Debug, PartialEq)]
 pub struct Rich<I: ?Sized, F: Fn(&I) -> &str> {
     /// Immutable data; the source filename and the token-to-str converter.
     immutable: std::rc::Rc<(std::rc::Rc<String>, F)>,

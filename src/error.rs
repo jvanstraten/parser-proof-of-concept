@@ -6,39 +6,17 @@ use super::location;
 
 /// Wrapper for the types of location information that may be attached to an
 /// error message.
-#[derive(PartialEq)]
-pub enum At<L, S>
-where
-    L: PartialEq,
-    S: PartialEq,
-{
+#[derive(Clone, PartialEq, Debug)]
+pub enum At<L, S> {
     None,
     Location(L),
     Span(S),
 }
 
-impl<L, S> At<L, S>
-where
-    L: PartialEq,
-    S: PartialEq,
-{
-    pub fn as_ref(&self) -> At<&L, &S> {
-        match self {
-            At::None => At::None,
-            At::Location(l) => At::Location(l),
-            At::Span(s) => At::Span(s),
-        }
-    }
-
-    pub fn is_known(&self) -> bool {
-        !matches!(self, At::None)
-    }
-}
-
 impl<L, S> std::fmt::Display for At<L, S>
 where
-    L: std::fmt::Display + PartialEq,
-    S: std::fmt::Display + PartialEq,
+    L: std::fmt::Display,
+    S: std::fmt::Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() {
@@ -54,6 +32,20 @@ where
                 At::Span(s) => write!(f, " at {s}"),
             }
         }
+    }
+}
+
+impl<L, S> At<L, S> {
+    pub fn as_ref(&self) -> At<&L, &S> {
+        match self {
+            At::None => At::None,
+            At::Location(l) => At::Location(l),
+            At::Span(s) => At::Span(s),
+        }
+    }
+
+    pub fn is_known(&self) -> bool {
+        !matches!(self, At::None)
     }
 }
 
@@ -117,9 +109,11 @@ pub trait Fallback {
 }
 
 /// Simple error message type.
+#[derive(Clone, Debug, PartialEq)]
 pub enum Simple<'i, I, L>
 where
     L: location::LocationTracker<I>,
+    I: Eq + std::hash::Hash,
 {
     /// One of .0 was expected, but .1 was found at .2
     ExpectedFound(
@@ -207,6 +201,7 @@ where
 impl<'i, I, L> Fallback for Simple<'i, I, L>
 where
     L: location::LocationTracker<I>,
+    I: Eq + std::hash::Hash,
 {
     fn simple<M: ToString>(msg: M) -> Self {
         Self::Custom(msg.to_string(), At::None)
@@ -216,7 +211,7 @@ where
 impl<'i, I, L> std::fmt::Display for Simple<'i, I, L>
 where
     L: location::LocationTracker<I>,
-    &'i I: std::fmt::Display,
+    I: std::fmt::Display + Eq + std::hash::Hash,
     L::Location: std::fmt::Display,
     L::Span: std::fmt::Display,
 {

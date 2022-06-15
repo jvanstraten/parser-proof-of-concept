@@ -7,6 +7,7 @@ use super::recovery;
 use super::stream;
 
 /// Result of a parser.
+#[derive(Clone, Debug, PartialEq)]
 pub enum Result<O, E> {
     /// Parsing was successful, yielding the given output.
     Success(O),
@@ -134,7 +135,7 @@ impl<'e, E> Iterator for ErrorIter<'e, E> {
 ///  - I: type of an input token
 ///  - L: location tracker instance
 ///  - E: error type
-pub trait Parser<'i, I, L, E>
+pub trait Parser<'i, I, L = location::Simple, E = error::Simple<'i, I, L>>
 where
     I: 'i,
     L: location::LocationTracker<I>,
@@ -238,6 +239,9 @@ where
     /// next() will behave like a call to parse_with_recovery(), but using the
     /// tokens left over by the previous call as the input in a way that
     /// doesn't require buffering the entire input in memory.
+    ///
+    /// Warning: if the parser matches empty input or recovers using empty
+    /// input, this will become an infinite loop!
     fn stream<J>(&self, source: J) -> Stream<'i, '_, I, L, E, Self>
     where
         J: IntoIterator<Item = &'i I>,
@@ -541,23 +545,45 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.input.eof() {
-            // Input is at EOF, so output EOF.
             None
         } else {
-            // Store current token index to detect not parsing any input.
-            let index_before = self.input.index();
-
-            // Run the parser.
-            let result = self.parser.parse_internal(&mut self.input, true);
-
-            // If the parser did not advance the location, advance by a single
-            // token as a last-resort recovery method, so we don't get stuck
-            // in an infinite loop.
-            if self.input.index() == index_before {
-                self.input.advance();
-            }
-
-            Some(result)
+            Some(self.parser.parse_internal(&mut self.input, true))
         }
+    }
+}
+
+impl<'i, 'p, I, L, E, P> Stream<'i, 'p, I, L, E, P>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    P: Parser<'i, I, L, E>,
+{
+    /// Return an iterator that yields the remaining tokens.
+    pub fn tail(self) -> Tail<'i, I, L> {
+        Tail { input: self.input }
+    }
+}
+
+/// See [Stream::tail()].
+pub struct Tail<'i, I, L>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+{
+    input: stream::Stream<'i, I, L>,
+}
+
+impl<'i, I, L> Iterator for Tail<'i, I, L>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+{
+    type Item = &'i I;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.input.token();
+        self.input.advance();
+        result
     }
 }

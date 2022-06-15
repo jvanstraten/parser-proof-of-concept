@@ -439,3 +439,159 @@ where
 {
     NoneOf { rejected }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::prelude::*;
+
+    #[test]
+    fn test_empty() {
+        let parser = empty();
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(())));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['a', 'b', 'c']
+        );
+    }
+
+    #[test]
+    fn test_none() {
+        let parser = none::<usize>();
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(None)));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['a', 'b', 'c']
+        );
+    }
+
+    #[test]
+    fn test_end() {
+        let parser = end();
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['a', 'b', 'c']
+        );
+        assert_eq!(Parser::<char>::parse(&parser, &[]), Ok(()));
+    }
+
+    #[test]
+    fn test_just() {
+        let parser = just(&'a');
+
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+    }
+
+    #[test]
+    fn test_filter() {
+        let parser = filter(|x| *x == 'a');
+
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+    }
+
+    #[test]
+    fn test_filter_map() {
+        let parser = filter_map(|x| if *x == 'a' { Some('A') } else { None });
+
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success('A'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+    }
+
+    #[test]
+    fn test_seq() {
+        let parser = seq(&['a', 'b']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Success(&['a', 'b']))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'c', 'b']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(1, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['a', 'c', 'b']
+        );
+    }
+
+    #[test]
+    fn test_one_of() {
+        let parser = one_of(&['a', 'b']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['b', 'c', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success(&'b'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'a']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+    }
+
+    #[test]
+    fn test_none_of() {
+        let parser = none_of(&['a', 'b']);
+
+        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['a', 'b', 'c']
+        );
+
+        let mut stream = Parser::<_>::stream(&parser, &['b', 'c', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['b', 'c', 'a']
+        );
+
+        let mut stream = Parser::<_>::stream(&parser, &['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success(&'c'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'a']);
+    }
+}
