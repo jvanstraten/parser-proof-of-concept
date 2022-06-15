@@ -219,6 +219,35 @@ where
         self.parse_with_recovery(source).into()
     }
 
+    /// Like stream(), but use the given start location rather than the
+    /// default location.
+    fn stream_with_location<J>(&self, source: J, start_location: L) -> Stream<'i, '_, I, L, E, Self>
+    where
+        J: IntoIterator<Item = &'i I>,
+        J::IntoIter: 'i,
+        Self: Sized,
+    {
+        Stream {
+            input: stream::Stream::new_with_location(source, start_location),
+            parser: self,
+            phantom: Default::default(),
+        }
+    }
+
+    /// Parse the given source of tokens in a streaming fashion; every call to
+    /// next() will behave like a call to parse_with_recovery(), but using the
+    /// tokens left over by the previous call as the input in a way that
+    /// doesn't require buffering the entire input in memory.
+    fn stream<J>(&self, source: J) -> Stream<'i, '_, I, L, E, Self>
+    where
+        J: IntoIterator<Item = &'i I>,
+        J::IntoIter: 'i,
+        L: Default,
+        Self: Sized,
+    {
+        self.stream_with_location(source, Default::default())
+    }
+
     /// Returns this parser in a box, giving a consistent type regardless of
     /// the contained parser.
     fn boxed(self) -> combinator::Boxed<'i, I, Self::Output, L, E>
@@ -484,6 +513,51 @@ where
         combinator::RecoverWith {
             parser: self,
             strategy,
+        }
+    }
+}
+
+/// See [Parser::stream()].
+pub struct Stream<'i, 'p, I, L, E, P>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    P: Parser<'i, I, L, E>,
+{
+    input: stream::Stream<'i, I, L>,
+    parser: &'p P,
+    phantom: std::marker::PhantomData<E>,
+}
+
+impl<'i, 'p, I, L, E, P> Iterator for Stream<'i, 'p, I, L, E, P>
+where
+    I: 'i,
+    L: location::LocationTracker<I>,
+    E: error::Error<'i, I, L>,
+    P: Parser<'i, I, L, E>,
+{
+    type Item = Result<P::Output, E>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.input.eof() {
+            // Input is at EOF, so output EOF.
+            None
+        } else {
+            // Store current token index to detect not parsing any input.
+            let index_before = self.input.index();
+
+            // Run the parser.
+            let result = self.parser.parse_internal(&mut self.input, true);
+
+            // If the parser did not advance the location, advance by a single
+            // token as a last-resort recovery method, so we don't get stuck
+            // in an infinite loop.
+            if self.input.index() == index_before {
+                self.input.advance();
+            }
+
+            Some(result)
         }
     }
 }
