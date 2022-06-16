@@ -74,7 +74,7 @@ macro_rules! concatenate {
 // Concatenate a set of boxed parsers that all return the same type into
 // a vector.
 pub fn concatenate<'i, 'p, I, C, O, E>(
-    stream: &mut crate::stream::Stream<'i, I, E::Location>,
+    stream: &mut crate::stream::Stream<'i, I, E::LocationTracker>,
     enable_recovery: bool,
     parsers: C,
 ) -> parser::Result<Vec<O>, E>
@@ -152,7 +152,7 @@ where
 // Parse using the same parser a configurable number of times.
 #[allow(clippy::too_many_arguments)]
 pub fn repeat<'i, 'p, I, C, S>(
-    stream: &mut crate::stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+    stream: &mut crate::stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
     enable_recovery: bool,
     minimum: usize,
     maximum: Option<usize>,
@@ -365,7 +365,7 @@ macro_rules! alternate {
 // Alternate between a set of boxed parsers (at least one) that all return the
 // same type.
 pub fn alternate<'i, 'p, I, C, O, E>(
-    stream: &mut crate::stream::Stream<'i, I, E::Location>,
+    stream: &mut crate::stream::Stream<'i, I, E::LocationTracker>,
     enable_recovery: bool,
     parsers: C,
 ) -> parser::Result<O, E>

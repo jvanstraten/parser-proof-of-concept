@@ -57,7 +57,7 @@ where
 {
     /// The location tracker used to provide location information for the
     /// error messages.
-    type Location: location::Tracker<I>;
+    type LocationTracker: location::Tracker<I>;
 
     /// Constructor for error messages stating that one of a number of tokens
     /// was expected but another was found. The span corresponds to the token
@@ -66,8 +66,8 @@ where
         expected: J,
         found: Option<&'i I>,
         at: At<
-            <Self::Location as location::Tracker<I>>::Location,
-            <Self::Location as location::Tracker<I>>::Span,
+            <Self::LocationTracker as location::Tracker<I>>::Location,
+            <Self::LocationTracker as location::Tracker<I>>::Span,
         >,
     ) -> Self
     where
@@ -87,44 +87,44 @@ where
     fn location(
         &self,
     ) -> At<
-        &<Self::Location as location::Tracker<I>>::Location,
-        &<Self::Location as location::Tracker<I>>::Span,
+        &<Self::LocationTracker as location::Tracker<I>>::Location,
+        &<Self::LocationTracker as location::Tracker<I>>::Span,
     >;
 
     /// Constructor for an unmatched left delimiter error.
     fn unmatched_left_delimiter(
         left_token: &'i I,
-        left_span: <Self::Location as location::Tracker<I>>::Span,
+        left_span: <Self::LocationTracker as location::Tracker<I>>::Span,
         close_before: At<
-            <Self::Location as location::Tracker<I>>::Location,
-            <Self::Location as location::Tracker<I>>::Span,
+            <Self::LocationTracker as location::Tracker<I>>::Location,
+            <Self::LocationTracker as location::Tracker<I>>::Span,
         >,
     ) -> Self;
 
     /// Constructor for an unmatched right delimiter error.
     fn unmatched_right_delimiter(
         right_token: &'i I,
-        right_span: <Self::Location as location::Tracker<I>>::Span,
+        right_span: <Self::LocationTracker as location::Tracker<I>>::Span,
         open_before: At<
-            <Self::Location as location::Tracker<I>>::Location,
-            <Self::Location as location::Tracker<I>>::Span,
+            <Self::LocationTracker as location::Tracker<I>>::Location,
+            <Self::LocationTracker as location::Tracker<I>>::Span,
         >,
     ) -> Self;
 
     /// Constructor for an unmatched delimiter type error.
     fn unmatched_delimiter_type(
         left_token: &'i I,
-        left_span: <Self::Location as location::Tracker<I>>::Span,
+        left_span: <Self::LocationTracker as location::Tracker<I>>::Span,
         right_token: &'i I,
-        right_span: <Self::Location as location::Tracker<I>>::Span,
+        right_span: <Self::LocationTracker as location::Tracker<I>>::Span,
     ) -> Self;
 
     /// Constructor for a custom message with a location.
     fn custom<M: ToString>(
         msg: M,
         at: At<
-            <Self::Location as location::Tracker<I>>::Location,
-            <Self::Location as location::Tracker<I>>::Span,
+            <Self::LocationTracker as location::Tracker<I>>::Location,
+            <Self::LocationTracker as location::Tracker<I>>::Span,
         >,
     ) -> Self;
 }
@@ -168,7 +168,7 @@ where
     I: 'i + Eq + std::hash::Hash,
     L: location::Tracker<I>,
 {
-    type Location = L;
+    type LocationTracker = L;
 
     fn expected_found<J>(expected: J, found: Option<&'i I>, at: At<L::Location, L::Span>) -> Self
     where

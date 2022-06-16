@@ -19,7 +19,7 @@ where
 
     fn parse_internal(
         &self,
-        _stream: &mut stream::Stream<'i, I, E::Location>,
+        _stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         parser::Result::Success(())
@@ -48,7 +48,7 @@ where
 
     fn parse_internal(
         &self,
-        _stream: &mut stream::Stream<'i, I, E::Location>,
+        _stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         parser::Result::Success(None)
@@ -78,7 +78,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         if stream.eof() {
@@ -122,7 +122,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Match the incoming token.
@@ -173,7 +173,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         stream.attempt(|stream| {
@@ -225,7 +225,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Match the incoming token.
@@ -275,7 +275,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         stream.attempt(|stream| {
@@ -337,7 +337,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Get the next token from the input stream, and match it against the
@@ -394,7 +394,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Get the next token from the input stream, and match it against the

@@ -153,7 +153,7 @@ pub trait Parser<'i, I: 'i> {
     ///  - return Recovered(O, Vec<E>)
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> Result<Self::Output, Self::Error>;
 
@@ -163,7 +163,7 @@ pub trait Parser<'i, I: 'i> {
     fn parse_with_recovery_and_location<J>(
         &self,
         source: J,
-        start_location: <Self::Error as error::Error<'i, I>>::Location,
+        start_location: <Self::Error as error::Error<'i, I>>::LocationTracker,
     ) -> Result<Self::Output, Self::Error>
     where
         J: IntoIterator<Item = &'i I>,
@@ -179,7 +179,7 @@ pub trait Parser<'i, I: 'i> {
     fn parse_with_location<J>(
         &self,
         source: J,
-        start_location: <Self::Error as error::Error<'i, I>>::Location,
+        start_location: <Self::Error as error::Error<'i, I>>::LocationTracker,
     ) -> std::result::Result<Self::Output, Self::Error>
     where
         J: IntoIterator<Item = &'i I>,
@@ -196,7 +196,7 @@ pub trait Parser<'i, I: 'i> {
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
-        <Self::Error as error::Error<'i, I>>::Location: Default,
+        <Self::Error as error::Error<'i, I>>::LocationTracker: Default,
         Self: Sized,
     {
         self.parse_with_recovery_and_location(source, Default::default())
@@ -208,7 +208,7 @@ pub trait Parser<'i, I: 'i> {
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
-        <Self::Error as error::Error<'i, I>>::Location: Default,
+        <Self::Error as error::Error<'i, I>>::LocationTracker: Default,
         Self: Sized,
     {
         self.parse_with_recovery(source).into()
@@ -219,7 +219,7 @@ pub trait Parser<'i, I: 'i> {
     fn stream_with_location<J>(
         &self,
         source: J,
-        start_location: <Self::Error as error::Error<'i, I>>::Location,
+        start_location: <Self::Error as error::Error<'i, I>>::LocationTracker,
     ) -> Stream<'i, '_, I, Self>
     where
         J: IntoIterator<Item = &'i I>,
@@ -243,7 +243,7 @@ pub trait Parser<'i, I: 'i> {
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
-        <Self::Error as error::Error<'i, I>>::Location: Default,
+        <Self::Error as error::Error<'i, I>>::LocationTracker: Default,
         Self: Sized,
     {
         self.stream_with_location(source, Default::default())
@@ -316,7 +316,7 @@ pub trait Parser<'i, I: 'i> {
     where
         F: Fn(
             Self::Output,
-            <<Self::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+            <<Self::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
         ) -> O,
         Self: Sized,
     {
@@ -328,7 +328,11 @@ pub trait Parser<'i, I: 'i> {
     fn map_err<X, F>(self, map: F) -> combinator::MapErr<Self, F>
     where
         F: Fn(Self::Error) -> X,
-        X: error::Error<'i, I, Location = <Self::Error as error::Error<'i, I>>::Location>,
+        X: error::Error<
+            'i,
+            I,
+            LocationTracker = <Self::Error as error::Error<'i, I>>::LocationTracker,
+        >,
         Self: Sized,
     {
         combinator::MapErr { child: self, map }
@@ -340,7 +344,7 @@ pub trait Parser<'i, I: 'i> {
     where
         F: Fn(
             Self::Error,
-            <<Self::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+            <<Self::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
         ) -> X,
         X: error::Error<'i, I>,
         Self: Sized,
@@ -362,7 +366,7 @@ pub trait Parser<'i, I: 'i> {
     where
         F: Fn(
             Self::Output,
-            <<Self::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+            <<Self::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
         ) -> combinator::TryMapResult<O, Self::Error>,
         Self: Sized,
     {
@@ -536,7 +540,7 @@ where
     I: 'i,
     P: Parser<'i, I>,
 {
-    input: stream::Stream<'i, I, <P::Error as error::Error<'i, I>>::Location>,
+    input: stream::Stream<'i, I, <P::Error as error::Error<'i, I>>::LocationTracker>,
     parser: &'p P,
 }
 
@@ -562,7 +566,7 @@ where
     P: Parser<'i, I>,
 {
     /// Return an iterator that yields the remaining tokens.
-    pub fn tail(self) -> Tail<'i, I, <P::Error as error::Error<'i, I>>::Location> {
+    pub fn tail(self) -> Tail<'i, I, <P::Error as error::Error<'i, I>>::LocationTracker> {
         Tail { input: self.input }
     }
 }

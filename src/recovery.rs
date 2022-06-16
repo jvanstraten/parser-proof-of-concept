@@ -25,7 +25,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -153,7 +153,7 @@ where
     where
         Self: Sized,
         F: Fn(
-            <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Location,
+            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
         ) -> C::Error,
     {
         PushErrorHere {
@@ -168,7 +168,7 @@ where
         Self: Sized,
         F: Fn(
             Option<&I>,
-            <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
         ) -> C::Error,
     {
         PushErrorForToken {
@@ -184,7 +184,7 @@ where
         Self: Sized,
         F: Fn(
             &mut Vec<C::Error>,
-            <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Location,
+            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
         ),
     {
         UpdateErrorsHere {
@@ -201,7 +201,7 @@ where
         F: Fn(
             &mut Vec<C::Error>,
             Option<&I>,
-            <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
         ),
     {
         UpdateErrorsForToken {
@@ -229,7 +229,7 @@ where
     where
         Self: Sized,
         F: Fn(
-            <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
         ) -> C::Output,
     {
         ReturnWith {
@@ -251,7 +251,7 @@ where
     fn recover(
         &self,
         _parser: &C,
-        _stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        _stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         _started_at: &stream::SavedState,
         _failed_at: &mut stream::SavedState,
         _errors: &mut Vec<C::Error>,
@@ -292,7 +292,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -316,7 +316,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -344,7 +344,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -374,7 +374,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -403,7 +403,7 @@ where
     fn scan(
         &mut self,
         token: &'i I,
-        span: <E::Location as location::Tracker<I>>::Span,
+        span: <E::LocationTracker as location::Tracker<I>>::Span,
         errors: &mut Vec<E>,
     ) -> bool;
 
@@ -411,7 +411,7 @@ where
     /// encountered.
     fn eof(
         &mut self,
-        _location: <E::Location as location::Tracker<I>>::Location,
+        _location: <E::LocationTracker as location::Tracker<I>>::Location,
         _errors: &mut Vec<E>,
     ) {
     }
@@ -430,7 +430,7 @@ where
 {
     fn handle_token<E, L>(&mut self, token: &'i I, span: S, errors: &mut Vec<E>)
     where
-        E: error::Error<'i, I, Location = L>,
+        E: error::Error<'i, I, LocationTracker = L>,
         L: location::Tracker<I, Span = S>,
     {
         // Try matching the right delimiter for the top of the stack first.
@@ -517,17 +517,17 @@ where
 }
 
 impl<'i, I, E> Scanner<'i, I, E>
-    for NestedDelimiters<'i, I, <E::Location as location::Tracker<I>>::Span>
+    for NestedDelimiters<'i, I, <E::LocationTracker as location::Tracker<I>>::Span>
 where
     I: PartialEq,
     E: error::Error<'i, I>,
-    <E::Location as location::Tracker<I>>::Location: Clone,
-    <E::Location as location::Tracker<I>>::Span: Clone,
+    <E::LocationTracker as location::Tracker<I>>::Location: Clone,
+    <E::LocationTracker as location::Tracker<I>>::Span: Clone,
 {
     fn scan(
         &mut self,
         token: &'i I,
-        span: <E::Location as location::Tracker<I>>::Span,
+        span: <E::LocationTracker as location::Tracker<I>>::Span,
         errors: &mut Vec<E>,
     ) -> bool {
         self.handle_token(token, span, errors);
@@ -536,7 +536,7 @@ where
 
     fn eof(
         &mut self,
-        location: <E::Location as location::Tracker<I>>::Location,
+        location: <E::LocationTracker as location::Tracker<I>>::Location,
         errors: &mut Vec<E>,
     ) {
         // Report unmatched left delimiters.
@@ -563,8 +563,8 @@ pub fn nested_delimiters<'i, I, E>(types: &'i [(I, I)]) -> impl Fn() -> NestedDe
 where
     I: PartialEq,
     E: error::Error<'i, I>,
-    <E::Location as location::Tracker<I>>::Location: Clone,
-    <E::Location as location::Tracker<I>>::Span: Clone,
+    <E::LocationTracker as location::Tracker<I>>::Location: Clone,
+    <E::LocationTracker as location::Tracker<I>>::Span: Clone,
 {
     || NestedDelimiters {
         types,
@@ -589,7 +589,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -630,7 +630,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -668,7 +668,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -727,7 +727,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -793,7 +793,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -831,13 +831,13 @@ where
     C: parser::Parser<'i, I>,
     S: Strategy<'i, I, C>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Location,
+        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
     ) -> C::Error,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -864,13 +864,13 @@ where
     S: Strategy<'i, I, C>,
     F: Fn(
         Option<&I>,
-        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Error,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -897,13 +897,13 @@ where
     S: Strategy<'i, I, C>,
     F: Fn(
         &mut Vec<C::Error>,
-        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Location,
+        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
     ) -> C::Error,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -931,13 +931,13 @@ where
     F: Fn(
         &mut Vec<C::Error>,
         Option<&I>,
-        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Error,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -967,7 +967,7 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -989,12 +989,14 @@ where
     I: 'i,
     C: parser::Parser<'i, I>,
     S: Strategy<'i, I, C>,
-    F: Fn(<<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span) -> C::Output,
+    F: Fn(
+        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+    ) -> C::Output,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,

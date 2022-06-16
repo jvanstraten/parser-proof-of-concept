@@ -47,7 +47,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, E::Location>,
+        stream: &mut crate::stream::Stream<'i, I, E::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         self.inner

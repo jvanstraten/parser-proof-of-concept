@@ -32,7 +32,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         self.child.parse_internal(stream, enable_recovery)
@@ -55,7 +55,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         self.child.parse_internal(stream, enable_recovery)
@@ -79,7 +79,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         self.child
@@ -106,7 +106,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         self.child.parse_internal(stream, enable_recovery).map(Some)
@@ -130,7 +130,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         self.child
@@ -151,7 +151,7 @@ where
     C: parser::Parser<'i, I>,
     F: Fn(
         C::Output,
-        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> O,
 {
     type Output = O;
@@ -159,7 +159,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         let from = stream.save();
@@ -180,14 +180,14 @@ where
     I: 'i,
     C: parser::Parser<'i, I>,
     F: Fn(C::Error) -> E,
-    E: error::Error<'i, I, Location = <C::Error as error::Error<'i, I>>::Location>,
+    E: error::Error<'i, I, LocationTracker = <C::Error as error::Error<'i, I>>::LocationTracker>,
 {
     type Output = C::Output;
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         self.child
@@ -208,16 +208,16 @@ where
     C: parser::Parser<'i, I>,
     F: Fn(
         C::Error,
-        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> E,
-    E: error::Error<'i, I, Location = <C::Error as error::Error<'i, I>>::Location>,
+    E: error::Error<'i, I, LocationTracker = <C::Error as error::Error<'i, I>>::LocationTracker>,
 {
     type Output = C::Output;
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         let from = stream.save();
@@ -248,7 +248,7 @@ where
     C: parser::Parser<'i, I>,
     F: Fn(
         C::Output,
-        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> TryMapResult<O, C::Error>, // TODO Into<TryMapResult<O, E>>, impl Result -> TryMapResult
 {
     type Output = O;
@@ -256,7 +256,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         let initial = stream.save();
@@ -298,7 +298,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(stream, enable_recovery, |x| x, self.a, self.b)
@@ -322,7 +322,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(stream, enable_recovery, |(a, _b)| a, self.a, self.b)
@@ -346,7 +346,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(stream, enable_recovery, |(_a, b)| b, self.a, self.b)
@@ -372,7 +372,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(
@@ -403,7 +403,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(
@@ -433,7 +433,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         algorithm::concatenate(stream, enable_recovery, &self.parsers)
@@ -473,7 +473,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<A::Output, Self::Error> {
         alternate!(stream, enable_recovery, &self.a, &self.b)
@@ -495,7 +495,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         alternate!(
@@ -523,7 +523,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         algorithm::alternate(stream, enable_recovery, &self.parsers)
@@ -567,7 +567,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         algorithm::repeat(
@@ -645,7 +645,7 @@ where
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         match self.parser.parse_internal(stream, enable_recovery) {
