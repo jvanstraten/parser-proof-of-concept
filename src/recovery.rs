@@ -210,6 +210,20 @@ where
         }
     }
 
+    /// Does nothing. You can use this when you want to recover by returning
+    /// something without skipping any tokens and you want the functions to
+    /// read like an English sentence; for example
+    /// 
+    /// ```
+    /// parser.to_recover(attempt_to().do_nothing().and_return(...))
+    /// ```
+    fn do_nothing(self) -> Self
+    where
+        Self: Sized,
+    {
+        self
+    }
+
     /// Succeed with recovery by emitting the given output, as if the tokens
     /// from the start position up to the current stream position had been
     /// parsed into that.
@@ -1004,5 +1018,20 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| Some((self.output)(stream.spanning_back_to(started_at))))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::prelude::*;
+
+    #[test]
+    fn test_null_recovery() {
+        let parser = just(&'a')
+            .to_recover(attempt_to().do_nothing().and_return(&'a'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
     }
 }
