@@ -5,15 +5,16 @@ use super::parser;
 use super::stream;
 
 /// See [empty()].
-pub struct Empty<E> {
-    phantom: std::marker::PhantomData<E>,
+pub struct Empty<I, E> {
+    phantom: std::marker::PhantomData<(I, E)>,
 }
 
-impl<'i, I, E> parser::Parser<'i, I> for Empty<E>
+impl<'i, I, E> parser::Parser<'i> for Empty<I, E>
 where
     I: 'i,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = ();
     type Error = E;
 
@@ -27,22 +28,23 @@ where
 }
 
 /// Match nothing; always succeeds. Returns ().
-pub fn empty<E>() -> Empty<E> {
+pub fn empty<I, E>() -> Empty<I, E> {
     Empty {
         phantom: Default::default(),
     }
 }
 
 /// See [none()].
-pub struct None<O, E> {
-    phantom: std::marker::PhantomData<(O, E)>,
+pub struct None<I, O, E> {
+    phantom: std::marker::PhantomData<(I, O, E)>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for None<O, E>
+impl<'i, I, O, E> parser::Parser<'i> for None<I, O, E>
 where
     I: 'i,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = Option<O>;
     type Error = E;
 
@@ -57,22 +59,23 @@ where
 
 /// Match nothing; always succeeds. Returns Option::None for the given option
 /// type.
-pub fn none<O, E>() -> None<O, E> {
+pub fn none<I, O, E>() -> None<I, O, E> {
     None {
         phantom: Default::default(),
     }
 }
 
 /// See [end()].
-pub struct End<E> {
-    phantom: std::marker::PhantomData<E>,
+pub struct End<I, E> {
+    phantom: std::marker::PhantomData<(I, E)>,
 }
 
-impl<'i, I, E> parser::Parser<'i, I> for End<E>
+impl<'i, I, E> parser::Parser<'i> for End<I, E>
 where
     I: 'i,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = ();
     type Error = E;
 
@@ -97,7 +100,7 @@ where
 }
 
 /// Match only end of file. Returns ().
-pub fn end<E>() -> End<E> {
+pub fn end<I, E>() -> End<I, E> {
     End {
         phantom: Default::default(),
     }
@@ -112,11 +115,12 @@ where
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, E> parser::Parser<'i, I> for Just<'i, I, E>
+impl<'i, I, E> parser::Parser<'i> for Just<'i, I, E>
 where
     I: 'i + PartialEq,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = &'i I;
     type Error = E;
 
@@ -157,17 +161,18 @@ where
 }
 
 /// See [filter()].
-pub struct Filter<F, E> {
+pub struct Filter<I, F, E> {
     filter: F,
-    phantom: std::marker::PhantomData<E>,
+    phantom: std::marker::PhantomData<(I, E)>,
 }
 
-impl<'i, I, F, E> parser::Parser<'i, I> for Filter<F, E>
+impl<'i, I, F, E> parser::Parser<'i> for Filter<I, F, E>
 where
     I: 'i,
     F: Fn(&I) -> bool,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = &'i I;
     type Error = E;
 
@@ -198,7 +203,7 @@ where
 
 /// Match the incoming token with the given filter function, returning a
 /// reference to the incoming token if the filter returned true.
-pub fn filter<I, F, E>(filter: F) -> Filter<F, E>
+pub fn filter<I, F, E>(filter: F) -> Filter<I, F, E>
 where
     F: Fn(&I) -> bool,
 {
@@ -209,17 +214,18 @@ where
 }
 
 /// See [filter_map()].
-pub struct FilterMap<F, E> {
+pub struct FilterMap<F, I, O, E> {
     filter: F,
-    phantom: std::marker::PhantomData<E>,
+    phantom: std::marker::PhantomData<(I, O, E)>,
 }
 
-impl<'i, I, F, O, E> parser::Parser<'i, I> for FilterMap<F, E>
+impl<'i, I, F, O, E> parser::Parser<'i> for FilterMap<F, I, O, E>
 where
     I: 'i,
     F: Fn(&I) -> Option<O>,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = O;
     type Error = E;
 
@@ -248,7 +254,7 @@ where
 
 /// Match the incoming token with the given filter function, returning the
 /// result of the filter function if it returned Some.
-pub fn filter_map<I, F, O, E>(filter: F) -> FilterMap<F, E>
+pub fn filter_map<I, F, O, E>(filter: F) -> FilterMap<F, I, O, E>
 where
     F: Fn(&I) -> Option<O>,
 {
@@ -264,12 +270,13 @@ pub struct Seq<'i, O, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for Seq<'i, O, E>
+impl<'i, I, O, E> parser::Parser<'i> for Seq<'i, O, E>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = &'i O;
     type Error = E;
 
@@ -326,12 +333,13 @@ pub struct OneOf<'i, O, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for OneOf<'i, O, E>
+impl<'i, I, O, E> parser::Parser<'i> for OneOf<'i, O, E>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = &'i I;
     type Error = E;
 
@@ -383,12 +391,13 @@ pub struct NoneOf<'i, O, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for NoneOf<'i, O, E>
+impl<'i, I, O, E> parser::Parser<'i> for NoneOf<'i, O, E>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
+    type Input = I;
     type Output = &'i I;
     type Error = E;
 

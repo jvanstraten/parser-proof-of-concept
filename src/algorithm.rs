@@ -151,8 +151,8 @@ where
 
 // Parse using the same parser a configurable number of times.
 #[allow(clippy::too_many_arguments)]
-pub fn repeat<'i, 'p, I, C, S>(
-    stream: &mut crate::stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+pub fn repeat<'i, 'p, C, S>(
+    stream: &mut crate::stream::Stream<'i, C::Input, <C::Error as error::Error<'i, C::Input>>::LocationTracker>,
     enable_recovery: bool,
     minimum: usize,
     maximum: Option<usize>,
@@ -163,9 +163,8 @@ pub fn repeat<'i, 'p, I, C, S>(
 ) -> parser::Result<Vec<C::Output>, C::Error>
 where
     'i: 'p,
-    I: 'i,
-    C: parser::Parser<'i, I>,
-    S: parser::Parser<'i, I, Error = C::Error>,
+    C: parser::Parser<'i>,
+    S: parser::Parser<'i, Input = C::Input, Error = C::Error>,
 {
     let max = maximum.unwrap_or(usize::MAX);
 
