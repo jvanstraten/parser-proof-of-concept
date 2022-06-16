@@ -131,18 +131,12 @@ impl<'e, E> Iterator for ErrorIter<'e, E> {
 }
 
 /// Main parser trait.
-///
-///  - 'i: lifetime of the input tokens
-///  - I: type of an input token
-///  - L: location tracker instance
-///  - E: error type
-pub trait Parser<'i, I, E = error::Simple<'i, I>>
-where
-    I: 'i,
-    E: error::Error<'i, I>,
-{
+pub trait Parser<'i, I: 'i> {
     /// The parse tree type returned by the parser.
     type Output;
+
+    /// The error type returned when parsing fails or recovery is required.
+    type Error: error::Error<'i, I>;
 
     /// The inner parsing function, to be implemented by parsers.
     ///
@@ -159,9 +153,9 @@ where
     ///  - return Recovered(O, Vec<E>)
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> Result<Self::Output, E>;
+    ) -> Result<Self::Output, Self::Error>;
 
     /// Parse the given source of tokens, starting from the given location.
     /// Return the (potentially recovered) parse tree and the list of errors
@@ -169,8 +163,8 @@ where
     fn parse_with_recovery_and_location<J>(
         &self,
         source: J,
-        start_location: E::Location,
-    ) -> Result<Self::Output, E>
+        start_location: <Self::Error as error::Error<'i, I>>::Location,
+    ) -> Result<Self::Output, Self::Error>
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
@@ -185,8 +179,8 @@ where
     fn parse_with_location<J>(
         &self,
         source: J,
-        start_location: E::Location,
-    ) -> std::result::Result<Self::Output, E>
+        start_location: <Self::Error as error::Error<'i, I>>::Location,
+    ) -> std::result::Result<Self::Output, Self::Error>
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
@@ -198,11 +192,11 @@ where
 
     /// Parse the given source of tokens. Return the (potentially recovered)
     /// parse tree and the list of errors produced while parsing.
-    fn parse_with_recovery<J>(&self, source: J) -> Result<Self::Output, E>
+    fn parse_with_recovery<J>(&self, source: J) -> Result<Self::Output, Self::Error>
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
-        E::Location: Default,
+        <Self::Error as error::Error<'i, I>>::Location: Default,
         Self: Sized,
     {
         self.parse_with_recovery_and_location(source, Default::default())
@@ -210,11 +204,11 @@ where
 
     /// Parse the given source of tokens. Return the parse tree or the first
     /// error.
-    fn parse<J>(&self, source: J) -> std::result::Result<Self::Output, E>
+    fn parse<J>(&self, source: J) -> std::result::Result<Self::Output, Self::Error>
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
-        E::Location: Default,
+        <Self::Error as error::Error<'i, I>>::Location: Default,
         Self: Sized,
     {
         self.parse_with_recovery(source).into()
@@ -225,8 +219,8 @@ where
     fn stream_with_location<J>(
         &self,
         source: J,
-        start_location: E::Location,
-    ) -> Stream<'i, '_, I, Self, E>
+        start_location: <Self::Error as error::Error<'i, I>>::Location,
+    ) -> Stream<'i, '_, I, Self>
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
@@ -235,7 +229,6 @@ where
         Stream {
             input: stream::Stream::new_with_location(source, start_location),
             parser: self,
-            phantom: Default::default(),
         }
     }
 
@@ -246,11 +239,11 @@ where
     ///
     /// Warning: if the parser matches empty input or recovers using empty
     /// input, this will become an infinite loop!
-    fn stream<J>(&self, source: J) -> Stream<'i, '_, I, Self, E>
+    fn stream<J>(&self, source: J) -> Stream<'i, '_, I, Self>
     where
         J: IntoIterator<Item = &'i I>,
         J::IntoIter: 'i,
-        E::Location: Default,
+        <Self::Error as error::Error<'i, I>>::Location: Default,
         Self: Sized,
     {
         self.stream_with_location(source, Default::default())
@@ -258,12 +251,23 @@ where
 
     /// Returns this parser in a box, giving a consistent type regardless of
     /// the contained parser.
-    fn boxed(self) -> combinator::Boxed<'i, I, Self::Output, E>
+    fn boxed(self) -> combinator::Boxed<'i, I, Self::Output, Self::Error>
     where
         Self: Sized + 'i,
     {
         combinator::Boxed {
-            parser: Rc::new(self),
+            child: Rc::new(self),
+        }
+    }
+
+    /// Utility to set the error type.
+    fn with_error<E>(self) -> combinator::WithError<Self, E>
+    where
+        Self: Sized + 'i,
+    {
+        combinator::WithError {
+            child: self,
+            phantom: Default::default(),
         }
     }
 
@@ -310,7 +314,10 @@ where
     /// tokens that it matched to a different type using the given function.
     fn map_with_span<O, F>(self, map: F) -> combinator::MapWithSpan<Self, F>
     where
-        F: Fn(Self::Output, <E::Location as location::Tracker<I>>::Span) -> O,
+        F: Fn(
+            Self::Output,
+            <<Self::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+        ) -> O,
         Self: Sized,
     {
         combinator::MapWithSpan { child: self, map }
@@ -318,32 +325,27 @@ where
 
     /// Maps the error type of the current parser to a different type using
     /// the given function.
-    fn map_err<X, F>(self, map: F) -> combinator::MapErr<Self, F, E>
+    fn map_err<X, F>(self, map: F) -> combinator::MapErr<Self, F>
     where
-        F: Fn(E) -> X,
-        X: error::Error<'i, I, Location = E::Location>,
+        F: Fn(Self::Error) -> X,
+        X: error::Error<'i, I, Location = <Self::Error as error::Error<'i, I>>::Location>,
         Self: Sized,
     {
-        combinator::MapErr {
-            child: self,
-            map,
-            phantom: Default::default(),
-        }
+        combinator::MapErr { child: self, map }
     }
 
     /// Maps the error type of the current parser along with the span of
     /// tokens that it matched to a different type using the given function.
-    fn map_err_with_span<X, F>(self, map: F) -> combinator::MapErrWithSpan<Self, F, E>
+    fn map_err_with_span<X, F>(self, map: F) -> combinator::MapErrWithSpan<Self, F>
     where
-        F: Fn(E, <E::Location as location::Tracker<I>>::Span) -> X,
+        F: Fn(
+            Self::Error,
+            <<Self::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+        ) -> X,
         X: error::Error<'i, I>,
         Self: Sized,
     {
-        combinator::MapErrWithSpan {
-            child: self,
-            map,
-            phantom: Default::default(),
-        }
+        combinator::MapErrWithSpan { child: self, map }
     }
 
     /// Maps the output type of the current parser along with the span of
@@ -360,8 +362,8 @@ where
     where
         F: Fn(
             Self::Output,
-            <E::Location as location::Tracker<I>>::Span,
-        ) -> combinator::TryMapResult<O, E>,
+            <<Self::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+        ) -> combinator::TryMapResult<O, Self::Error>,
         Self: Sized,
     {
         combinator::TryMap { child: self, map }
@@ -371,7 +373,7 @@ where
     /// their results as a two-tuple.
     fn then<B>(self, b: B) -> combinator::Then<Self, B>
     where
-        B: Parser<'i, I, E>,
+        B: Parser<'i, I, Error = Self::Error>,
         Self: Sized,
     {
         combinator::Then { a: self, b }
@@ -381,7 +383,7 @@ where
     /// the result of the first one.
     fn then_ignore<B>(self, b: B) -> combinator::ThenIgnore<Self, B>
     where
-        B: Parser<'i, I, E>,
+        B: Parser<'i, I, Error = Self::Error>,
         Self: Sized,
     {
         combinator::ThenIgnore { a: self, b }
@@ -391,7 +393,7 @@ where
     /// the result of the second one.
     fn ignore_then<B>(self, b: B) -> combinator::IgnoreThen<Self, B>
     where
-        B: Parser<'i, I, E>,
+        B: Parser<'i, I, Error = Self::Error>,
         Self: Sized,
     {
         combinator::IgnoreThen { a: self, b }
@@ -401,8 +403,8 @@ where
     /// yielding the result of the current one.
     fn delimited_by<A, B>(self, left: A, right: B) -> combinator::DelimitedBy<A, Self, B>
     where
-        A: Parser<'i, I, E>,
-        B: Parser<'i, I, E>,
+        A: Parser<'i, I, Error = Self::Error>,
+        B: Parser<'i, I, Error = Self::Error>,
         Self: Sized,
     {
         combinator::DelimitedBy {
@@ -416,7 +418,7 @@ where
     /// parsers, yielding the result of the current one.
     fn padded_by<A>(self, padding: A) -> combinator::PaddedBy<A, Self>
     where
-        A: Parser<'i, I, E>,
+        A: Parser<'i, I, Error = Self::Error>,
         Self: Sized,
     {
         combinator::PaddedBy {
@@ -432,9 +434,9 @@ where
     /// Note: chain() works a little different from how it currently works in
     /// Chumsky, because I couldn't be bothered making the additional types
     /// needed to do it that way.
-    fn chain<A>(self, other: A) -> combinator::Chain<'i, I, Self::Output, E>
+    fn chain<A>(self, other: A) -> combinator::Chain<'i, I, Self::Output, Self::Error>
     where
-        A: Parser<'i, I, E, Output = Self::Output> + 'i,
+        A: Parser<'i, I, Output = Self::Output, Error = Self::Error> + 'i,
         Self: Sized + 'i,
     {
         combinator::Chain {
@@ -446,7 +448,7 @@ where
     /// current parser if both match.
     fn or<A>(self, other: A) -> combinator::Or<Self, A>
     where
-        A: Parser<'i, I, E, Output = Self::Output>,
+        A: Parser<'i, I, Output = Self::Output, Error = Self::Error>,
         Self: Sized,
     {
         combinator::Or { a: self, b: other }
@@ -471,9 +473,9 @@ where
     fn chain_alternatives<A>(
         self,
         other: A,
-    ) -> combinator::ChainAlternatives<'i, I, Self::Output, E>
+    ) -> combinator::ChainAlternatives<'i, I, Self::Output, Self::Error>
     where
-        A: Parser<'i, I, E, Output = Self::Output> + 'i,
+        A: Parser<'i, I, Output = Self::Output, Error = Self::Error> + 'i,
         Self: Sized + 'i,
     {
         combinator::ChainAlternatives {
@@ -487,7 +489,7 @@ where
     where
         Self: Sized,
     {
-        combinator::Repeated {
+        combinator::SeparatedBy {
             minimum: 0,
             maximum: None,
             item: self,
@@ -503,9 +505,9 @@ where
     fn separated_by<A>(self, separator: A) -> combinator::SeparatedBy<Self, A>
     where
         Self: Sized,
-        A: Parser<'i, I, E>,
+        A: Parser<'i, I, Error = Self::Error>,
     {
-        combinator::Repeated {
+        combinator::SeparatedBy {
             minimum: 0,
             maximum: None,
             item: self,
@@ -519,7 +521,7 @@ where
     fn to_recover<S>(self, strategy: S) -> combinator::ToRecover<Self, S>
     where
         Self: Sized,
-        S: recovery::Strategy<'i, I, Self, E>,
+        S: recovery::Strategy<'i, I, Self>,
     {
         combinator::ToRecover {
             parser: self,
@@ -529,24 +531,21 @@ where
 }
 
 /// See [Parser::stream()].
-pub struct Stream<'i, 'p, I, P, E = error::Simple<'i, I>>
+pub struct Stream<'i, 'p, I, P>
 where
     I: 'i,
-    E: error::Error<'i, I>,
-    P: Parser<'i, I, E>,
+    P: Parser<'i, I>,
 {
-    input: stream::Stream<'i, I, E::Location>,
+    input: stream::Stream<'i, I, <P::Error as error::Error<'i, I>>::Location>,
     parser: &'p P,
-    phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, 'p, I, P, E> Iterator for Stream<'i, 'p, I, P, E>
+impl<'i, 'p, I, P> Iterator for Stream<'i, 'p, I, P>
 where
     I: 'i,
-    E: error::Error<'i, I>,
-    P: Parser<'i, I, E>,
+    P: Parser<'i, I>,
 {
-    type Item = Result<P::Output, E>;
+    type Item = Result<P::Output, P::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.input.eof() {
@@ -557,14 +556,13 @@ where
     }
 }
 
-impl<'i, 'p, I, P, E> Stream<'i, 'p, I, P, E>
+impl<'i, 'p, I, P> Stream<'i, 'p, I, P>
 where
     I: 'i,
-    E: error::Error<'i, I>,
-    P: Parser<'i, I, E>,
+    P: Parser<'i, I>,
 {
     /// Return an iterator that yields the remaining tokens.
-    pub fn tail(self) -> Tail<'i, I, E::Location> {
+    pub fn tail(self) -> Tail<'i, I, <P::Error as error::Error<'i, I>>::Location> {
         Tail { input: self.input }
     }
 }

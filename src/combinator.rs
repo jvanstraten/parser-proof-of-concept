@@ -11,30 +11,54 @@ use std::rc::Rc;
 
 /// See [parser::Parser::boxed()].
 pub struct Boxed<'i, I, O, E = error::Simple<'i, I>> {
-    pub(crate) parser: Rc<dyn parser::Parser<'i, I, E, Output = O> + 'i>,
+    pub(crate) child: Rc<dyn parser::Parser<'i, I, Output = O, Error = E> + 'i>,
 }
 
 impl<'i, I, O, E> Clone for Boxed<'i, I, O, E> {
     fn clone(&self) -> Self {
         Self {
-            parser: self.parser.clone(),
+            child: self.child.clone(),
         }
     }
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I, E> for Boxed<'i, I, O, E>
+impl<'i, I, O, E> parser::Parser<'i, I> for Boxed<'i, I, O, E>
 where
     I: 'i,
     E: error::Error<'i, I>,
 {
     type Output = O;
+    type Error = E;
 
     fn parse_internal(
         &self,
         stream: &mut stream::Stream<'i, I, E::Location>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
-        self.parser.parse_internal(stream, enable_recovery)
+        self.child.parse_internal(stream, enable_recovery)
+    }
+}
+
+/// See [parser::Parser::with_error()].
+pub struct WithError<C, E> {
+    pub(crate) child: C,
+    pub(crate) phantom: std::marker::PhantomData<E>,
+}
+
+impl<'i, I, C> parser::Parser<'i, I> for WithError<C, C::Error>
+where
+    I: 'i,
+    C: parser::Parser<'i, I>,
+{
+    type Output = C::Output;
+    type Error = C::Error;
+
+    fn parse_internal(
+        &self,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, Self::Error> {
+        self.child.parse_internal(stream, enable_recovery)
     }
 }
 
@@ -44,20 +68,20 @@ pub struct To<C, O> {
     pub(crate) to: O,
 }
 
-impl<'i, I, C, O, E> parser::Parser<'i, I, E> for To<C, O>
+impl<'i, I, C, O> parser::Parser<'i, I> for To<C, O>
 where
     I: 'i,
-    C: parser::Parser<'i, I, E>,
+    C: parser::Parser<'i, I>,
     O: Clone,
-    E: error::Error<'i, I>,
 {
     type Output = O;
+    type Error = C::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         self.child
             .parse_internal(stream, enable_recovery)
             .map(|_| self.to.clone())
@@ -72,19 +96,19 @@ pub struct Some<C> {
     pub(crate) child: C,
 }
 
-impl<'i, I, C, E> parser::Parser<'i, I, E> for Some<C>
+impl<'i, I, C> parser::Parser<'i, I> for Some<C>
 where
     I: 'i,
-    C: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I>,
+    C: parser::Parser<'i, I>,
 {
     type Output = Option<C::Output>;
+    type Error = C::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         self.child.parse_internal(stream, enable_recovery).map(Some)
     }
 }
@@ -95,20 +119,20 @@ pub struct Map<C, F> {
     pub(crate) map: F,
 }
 
-impl<'i, I, C, F, O, E> parser::Parser<'i, I, E> for Map<C, F>
+impl<'i, I, C, F, O> parser::Parser<'i, I> for Map<C, F>
 where
     I: 'i,
-    C: parser::Parser<'i, I, E>,
+    C: parser::Parser<'i, I>,
     F: Fn(C::Output) -> O,
-    E: error::Error<'i, I>,
 {
     type Output = O;
+    type Error = C::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         self.child
             .parse_internal(stream, enable_recovery)
             .map(&self.map)
@@ -121,20 +145,23 @@ pub struct MapWithSpan<C, F> {
     pub(crate) map: F,
 }
 
-impl<'i, I, C, F, O, E> parser::Parser<'i, I, E> for MapWithSpan<C, F>
+impl<'i, I, C, F, O> parser::Parser<'i, I> for MapWithSpan<C, F>
 where
     I: 'i,
-    C: parser::Parser<'i, I, E>,
-    F: Fn(C::Output, <E::Location as location::Tracker<I>>::Span) -> O,
-    E: error::Error<'i, I>,
+    C: parser::Parser<'i, I>,
+    F: Fn(
+        C::Output,
+        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+    ) -> O,
 {
     type Output = O;
+    type Error = C::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         let from = stream.save();
         self.child
             .parse_internal(stream, enable_recovery)
@@ -143,27 +170,26 @@ where
 }
 
 /// See [parser::Parser::map_err()].
-pub struct MapErr<C, F, A> {
+pub struct MapErr<C, F> {
     pub(crate) child: C,
     pub(crate) map: F,
-    pub(crate) phantom: std::marker::PhantomData<A>,
 }
 
-impl<'i, I, C, A, F, E> parser::Parser<'i, I, E> for MapErr<C, F, A>
+impl<'i, I, C, F, E> parser::Parser<'i, I> for MapErr<C, F>
 where
     I: 'i,
-    C: parser::Parser<'i, I, A>,
-    A: error::Error<'i, I>,
-    F: Fn(A) -> E,
-    E: error::Error<'i, I, Location = A::Location>,
+    C: parser::Parser<'i, I>,
+    F: Fn(C::Error) -> E,
+    E: error::Error<'i, I, Location = <C::Error as error::Error<'i, I>>::Location>,
 {
     type Output = C::Output;
+    type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, A::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         self.child
             .parse_internal(stream, enable_recovery)
             .map_err(&self.map)
@@ -171,27 +197,29 @@ where
 }
 
 /// See [parser::Parser::map_err_with_span()].
-pub struct MapErrWithSpan<C, F, A> {
+pub struct MapErrWithSpan<C, F> {
     pub(crate) child: C,
     pub(crate) map: F,
-    pub(crate) phantom: std::marker::PhantomData<A>,
 }
 
-impl<'i, I, C, A, F, E> parser::Parser<'i, I, E> for MapErrWithSpan<C, F, A>
+impl<'i, I, C, F, E> parser::Parser<'i, I> for MapErrWithSpan<C, F>
 where
     I: 'i,
-    C: parser::Parser<'i, I, A>,
-    A: error::Error<'i, I>,
-    F: Fn(A, <A::Location as location::Tracker<I>>::Span) -> E,
-    E: error::Error<'i, I, Location = A::Location>,
+    C: parser::Parser<'i, I>,
+    F: Fn(
+        C::Error,
+        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+    ) -> E,
+    E: error::Error<'i, I, Location = <C::Error as error::Error<'i, I>>::Location>,
 {
     type Output = C::Output;
+    type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, A::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         let from = stream.save();
         self.child
             .parse_internal(stream, enable_recovery)
@@ -214,20 +242,23 @@ pub struct TryMap<C, F> {
     pub(crate) map: F,
 }
 
-impl<'i, I, C, F, O, E> parser::Parser<'i, I, E> for TryMap<C, F>
+impl<'i, I, C, F, O> parser::Parser<'i, I> for TryMap<C, F>
 where
     I: 'i,
-    C: parser::Parser<'i, I, E>,
-    F: Fn(C::Output, <E::Location as location::Tracker<I>>::Span) -> TryMapResult<O, E>, // TODO Into<TryMapResult<O, E>>, impl Result -> TryMapResult
-    E: error::Error<'i, I>,
+    C: parser::Parser<'i, I>,
+    F: Fn(
+        C::Output,
+        <<C::Error as error::Error<'i, I>>::Location as location::Tracker<I>>::Span,
+    ) -> TryMapResult<O, C::Error>, // TODO Into<TryMapResult<O, E>>, impl Result -> TryMapResult
 {
     type Output = O;
+    type Error = C::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         let initial = stream.save();
         self.child
             .parse_internal(stream, enable_recovery)
@@ -256,20 +287,20 @@ pub struct Then<A, B> {
     pub(crate) b: B,
 }
 
-impl<'i, I, A, B, E> parser::Parser<'i, I, E> for Then<A, B>
+impl<'i, I, A, B> parser::Parser<'i, I> for Then<A, B>
 where
     I: 'i,
-    A: parser::Parser<'i, I, E>,
-    B: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I>,
+    A: parser::Parser<'i, I>,
+    B: parser::Parser<'i, I, Error = A::Error>,
 {
     type Output = (A::Output, B::Output);
+    type Error = A::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(stream, enable_recovery, |x| x, self.a, self.b)
     }
 }
@@ -280,20 +311,20 @@ pub struct ThenIgnore<A, B> {
     pub(crate) b: B,
 }
 
-impl<'i, I, A, B, E> parser::Parser<'i, I, E> for ThenIgnore<A, B>
+impl<'i, I, A, B> parser::Parser<'i, I> for ThenIgnore<A, B>
 where
     I: 'i,
-    A: parser::Parser<'i, I, E>,
-    B: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I>,
+    A: parser::Parser<'i, I>,
+    B: parser::Parser<'i, I, Error = A::Error>,
 {
     type Output = A::Output;
+    type Error = A::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(stream, enable_recovery, |(a, _b)| a, self.a, self.b)
     }
 }
@@ -304,20 +335,20 @@ pub struct IgnoreThen<A, B> {
     pub(crate) b: B,
 }
 
-impl<'i, I, A, B, E> parser::Parser<'i, I, E> for IgnoreThen<A, B>
+impl<'i, I, A, B> parser::Parser<'i, I> for IgnoreThen<A, B>
 where
     I: 'i,
-    A: parser::Parser<'i, I, E>,
-    B: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I>,
+    A: parser::Parser<'i, I>,
+    B: parser::Parser<'i, I, Error = A::Error>,
 {
     type Output = B::Output;
+    type Error = A::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(stream, enable_recovery, |(_a, b)| b, self.a, self.b)
     }
 }
@@ -329,21 +360,21 @@ pub struct DelimitedBy<A, B, C> {
     pub(crate) right: C,
 }
 
-impl<'i, I, A, B, C, E> parser::Parser<'i, I, E> for DelimitedBy<A, B, C>
+impl<'i, I, A, B, C> parser::Parser<'i, I> for DelimitedBy<A, B, C>
 where
     I: 'i,
-    A: parser::Parser<'i, I, E>,
-    B: parser::Parser<'i, I, E>,
-    C: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I>,
+    A: parser::Parser<'i, I>,
+    B: parser::Parser<'i, I, Error = A::Error>,
+    C: parser::Parser<'i, I, Error = A::Error>,
 {
     type Output = B::Output;
+    type Error = A::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(
             stream,
             enable_recovery,
@@ -361,20 +392,20 @@ pub struct PaddedBy<A, B> {
     pub(crate) middle: B,
 }
 
-impl<'i, I, A, B, E> parser::Parser<'i, I, E> for PaddedBy<A, B>
+impl<'i, I, A, B> parser::Parser<'i, I> for PaddedBy<A, B>
 where
     I: 'i,
-    A: parser::Parser<'i, I, E>,
-    B: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I>,
+    A: parser::Parser<'i, I>,
+    B: parser::Parser<'i, I, Error = A::Error>,
 {
     type Output = B::Output;
+    type Error = A::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         concatenate!(
             stream,
             enable_recovery,
@@ -391,19 +422,20 @@ pub struct Chain<'i, I, O, E> {
     pub(crate) parsers: Vec<Boxed<'i, I, O, E>>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I, E> for Chain<'i, I, O, E>
+impl<'i, I, O, E> parser::Parser<'i, I> for Chain<'i, I, O, E>
 where
     I: 'i,
     O: 'i,
     E: error::Error<'i, I>,
 {
     type Output = Vec<O>;
+    type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         algorithm::concatenate(stream, enable_recovery, &self.parsers)
     }
 }
@@ -416,7 +448,7 @@ where
     /// Append an additional parser to this chain.
     pub fn and<B>(self, other: B) -> Chain<'i, I, O, E>
     where
-        B: parser::Parser<'i, I, E, Output = O> + 'i,
+        B: parser::Parser<'i, I, Output = O, Error = E> + 'i,
     {
         let mut parsers = self.parsers;
         parsers.push(other.boxed());
@@ -430,20 +462,20 @@ pub struct Or<A, B> {
     pub(crate) b: B,
 }
 
-impl<'i, I, A, B, E> parser::Parser<'i, I, E> for Or<A, B>
+impl<'i, I, A, B> parser::Parser<'i, I> for Or<A, B>
 where
     I: 'i,
-    E: error::Error<'i, I>,
-    A: parser::Parser<'i, I, E>,
-    B: parser::Parser<'i, I, E, Output = A::Output>,
+    A: parser::Parser<'i, I>,
+    B: parser::Parser<'i, I, Output = A::Output, Error = A::Error>,
 {
     type Output = A::Output;
+    type Error = A::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<A::Output, E> {
+    ) -> parser::Result<A::Output, Self::Error> {
         alternate!(stream, enable_recovery, &self.a, &self.b)
     }
 }
@@ -453,24 +485,24 @@ pub struct OrNot<C> {
     pub(crate) child: Some<C>,
 }
 
-impl<'i, I, C, E> parser::Parser<'i, I, E> for OrNot<C>
+impl<'i, I, C> parser::Parser<'i, I> for OrNot<C>
 where
     I: 'i,
-    C: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I>,
+    C: parser::Parser<'i, I>,
 {
     type Output = Option<C::Output>;
+    type Error = C::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         alternate!(
             stream,
             enable_recovery,
             &self.child,
-            &primitive::none::<C::Output>()
+            &primitive::none::<C::Output, C::Error>()
         )
     }
 }
@@ -480,19 +512,20 @@ pub struct ChainAlternatives<'i, I, O, E> {
     pub(crate) parsers: Vec<Boxed<'i, I, O, E>>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I, E> for ChainAlternatives<'i, I, O, E>
+impl<'i, I, O, E> parser::Parser<'i, I> for ChainAlternatives<'i, I, O, E>
 where
     I: 'i,
     O: 'i,
     E: error::Error<'i, I>,
 {
     type Output = O;
+    type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         algorithm::alternate(stream, enable_recovery, &self.parsers)
     }
 }
@@ -505,7 +538,7 @@ where
     /// Append an additional parser to this chain.
     pub fn and<B>(self, other: B) -> Chain<'i, I, O, E>
     where
-        B: parser::Parser<'i, I, E, Output = O> + 'i,
+        B: parser::Parser<'i, I, Output = O, Error = E> + 'i,
     {
         let mut parsers = self.parsers;
         parsers.push(other.boxed());
@@ -513,8 +546,8 @@ where
     }
 }
 
-/// See [parser::Parser::repeated()].
-pub struct Repeated<A, B = primitive::Empty> {
+/// See [parser::Parser::separated_by()].
+pub struct SeparatedBy<A, B> {
     pub(crate) minimum: usize,
     pub(crate) maximum: Option<usize>,
     pub(crate) item: A,
@@ -523,19 +556,20 @@ pub struct Repeated<A, B = primitive::Empty> {
     pub(crate) allow_trailing: bool,
 }
 
-impl<'i, I, A, E> parser::Parser<'i, I, E> for Repeated<A>
+impl<'i, I, A, B> parser::Parser<'i, I> for SeparatedBy<A, B>
 where
     I: 'i,
-    A: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I>,
+    A: parser::Parser<'i, I>,
+    B: parser::Parser<'i, I, Error = A::Error>,
 {
     type Output = Vec<A::Output>;
+    type Error = A::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         algorithm::repeat(
             stream,
             enable_recovery,
@@ -549,7 +583,7 @@ where
     }
 }
 
-impl<A, B> Repeated<A, B> {
+impl<A, B> SeparatedBy<A, B> {
     /// Require at least the given amount of iterations.
     pub fn at_least(mut self, minimum: usize) -> Self {
         self.minimum = minimum;
@@ -591,8 +625,8 @@ impl<A, B> Repeated<A, B> {
     }
 }
 
-/// See [parser::Parser::separated_by()].
-pub type SeparatedBy<A, B> = Repeated<A, B>;
+/// See [parser::Parser::repeated()].
+pub type Repeated<A> = SeparatedBy<A, A>;
 
 /// See [parser::Parser::to_recover()].
 pub struct ToRecover<C, S> {
@@ -600,20 +634,20 @@ pub struct ToRecover<C, S> {
     pub(crate) strategy: S,
 }
 
-impl<'i, I, C, S, E> parser::Parser<'i, I, E> for ToRecover<C, S>
+impl<'i, I, C, S> parser::Parser<'i, I> for ToRecover<C, S>
 where
     I: 'i,
-    C: parser::Parser<'i, I, E>,
-    S: recovery::Strategy<'i, I, C, E>,
-    E: error::Error<'i, I>,
+    C: parser::Parser<'i, I>,
+    S: recovery::Strategy<'i, I, C>,
 {
     type Output = C::Output;
+    type Error = C::Error;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::Location>,
+        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::Location>,
         enable_recovery: bool,
-    ) -> parser::Result<Self::Output, E> {
+    ) -> parser::Result<Self::Output, Self::Error> {
         match self.parser.parse_internal(stream, enable_recovery) {
             parser::Result::Failed(last_token_matched, mut errors) => {
                 if !enable_recovery {
@@ -653,35 +687,36 @@ mod tests {
 
     #[test]
     fn test_boxed() {
-        /*let parser = just(&'a').boxed();
+        let parser = just(&'a').boxed().with_error::<SimpleError<_>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
-        assert_eq!(
-            stream.tail().cloned().collect::<Vec<_>>(),
-            vec!['b', 'c']
-        );*/
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
     }
 
     #[test]
     fn test_to() {
-        let parser = Parser::<_>::to(just(&'a'), 42usize);
-        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        let parser = just(&'a').to(42usize).with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(42usize)));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
     }
 
     #[test]
     fn test_map() {
-        let parser = Parser::<_>::map(just(&'a'), |x| x.to_ascii_uppercase());
-        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        let parser = just(&'a')
+            .map(|x| x.to_ascii_uppercase())
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success('A')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
     }
 
     #[test]
     fn test_map_with_span() {
-        let parser = Parser::<_>::map_with_span(just(&'a'), |x, s| (x.to_ascii_uppercase(), s));
-        let mut stream = Parser::<_>::stream(&parser, &['a', 'b', 'c']);
+        let parser = just(&'a')
+            .map_with_span(|x, s| (x.to_ascii_uppercase(), s))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(('A', 0..1))));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
     }

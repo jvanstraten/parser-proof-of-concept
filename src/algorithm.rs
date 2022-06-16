@@ -151,8 +151,8 @@ where
 
 // Parse using the same parser a configurable number of times.
 #[allow(clippy::too_many_arguments)]
-pub fn repeat<'i, 'p, I, C, S, E>(
-    stream: &mut crate::stream::Stream<'i, I, E::Location>,
+pub fn repeat<'i, 'p, I, C, S>(
+    stream: &mut crate::stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::Location>,
     enable_recovery: bool,
     minimum: usize,
     maximum: Option<usize>,
@@ -160,13 +160,12 @@ pub fn repeat<'i, 'p, I, C, S, E>(
     separator: Option<&'p S>,
     allow_leading: bool,
     allow_trailing: bool,
-) -> parser::Result<Vec<C::Output>, E>
+) -> parser::Result<Vec<C::Output>, C::Error>
 where
     'i: 'p,
     I: 'i,
-    C: parser::Parser<'i, I, E>,
-    S: parser::Parser<'i, I, E>,
-    E: error::Error<'i, I> + 'p,
+    C: parser::Parser<'i, I>,
+    S: parser::Parser<'i, I, Error = C::Error>,
 {
     let max = maximum.unwrap_or(usize::MAX);
 
@@ -176,7 +175,7 @@ where
 
     // Set to Some(errors) when a child parser recovered from a parse
     // error.
-    let mut recovery: Option<Vec<E>> = None;
+    let mut recovery: Option<Vec<C::Error>> = None;
 
     // Gather the results in a vector.
     let mut output = Vec::with_capacity(minimum);
@@ -346,12 +345,12 @@ macro_rules! alternate {
         // than that, don't argue with it and just return those errors as-is.
         let mut failures = failures.into_iter();
         let (last_token_matched, es, _) = failures.next().unwrap();
-        if es.len() == 1 && es[0].is_expected_found() {
+        if es.len() == 1 && crate::error::Error::is_expected_found(&es[0]) {
             let mut e = es.into_iter().next().unwrap();
             for (_, es2, _) in failures {
                 for e2 in es2 {
-                    if e2.is_expected_found() && e2.location() == e.location() {
-                        e.merge_expected_found(&e2);
+                    if crate::error::Error::is_expected_found(&e2) && crate::error::Error::location(&e2) == crate::error::Error::location(&e) {
+                        crate::error::Error::merge_expected_found(&mut e, &e2);
                     }
                 }
             }

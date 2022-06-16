@@ -28,7 +28,7 @@ where
     /// parsing.
     pub fn define<P>(&mut self, parser: P)
     where
-        P: parser::Parser<'i, I, E, Output = O> + 'i,
+        P: parser::Parser<'i, I, Output = O, Error = E> + 'i,
     {
         assert!(
             self.inner.borrow_mut().replace(parser.boxed()).is_none(),
@@ -37,12 +37,13 @@ where
     }
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I, E> for Recursive<'i, I, O, E>
+impl<'i, I, O, E> parser::Parser<'i, I> for Recursive<'i, I, O, E>
 where
     I: 'i,
     E: error::Error<'i, I>,
 {
     type Output = O;
+    type Error = E;
 
     fn parse_internal(
         &self,
@@ -57,12 +58,11 @@ where
     }
 }
 
-pub fn recursive<'i, I, F, C, E>(f: F) -> Recursive<'i, I, C::Output, E>
+pub fn recursive<'i, I, F, C>(f: F) -> Recursive<'i, I, C::Output, C::Error>
 where
     I: 'i,
-    F: FnOnce(&Recursive<'i, I, C::Output, E>) -> C,
-    C: parser::Parser<'i, I, E> + 'i,
-    E: error::Error<'i, I>,
+    F: FnOnce(&Recursive<'i, I, C::Output, C::Error>) -> C,
+    C: parser::Parser<'i, I> + 'i,
 {
     let mut recursive = Recursive::declare();
     recursive.define(f(&recursive));
