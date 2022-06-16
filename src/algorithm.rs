@@ -2,7 +2,6 @@
 
 use super::combinator;
 use super::error;
-use super::location;
 use super::parser;
 
 // Concatenate a set of parsers that is completely known at compile time into
@@ -74,18 +73,17 @@ macro_rules! concatenate {
 
 // Concatenate a set of boxed parsers that all return the same type into
 // a vector.
-pub fn concatenate<'i, 'p, I, O, L, E, P>(
-    stream: &mut crate::stream::Stream<'i, I, L>,
+pub fn concatenate<'i, 'p, I, C, O, E>(
+    stream: &mut crate::stream::Stream<'i, I, E::Location>,
     enable_recovery: bool,
-    parsers: P,
+    parsers: C,
 ) -> parser::Result<Vec<O>, E>
 where
     'i: 'p,
     I: 'i,
+    C: IntoIterator<Item = &'p combinator::Boxed<'i, I, O, E>>,
     O: 'i,
-    L: location::LocationTracker<I> + 'p,
-    E: error::Error<'i, I, L> + 'p,
-    P: IntoIterator<Item = &'p combinator::Boxed<'i, I, O, L, E>>,
+    E: error::Error<'i, I> + 'p,
 {
     let mut parsers = parsers.into_iter();
 
@@ -152,24 +150,23 @@ where
 }
 
 // Parse using the same parser a configurable number of times.
-#[allow(clippy::too_many_arguments)] // no u
-pub fn repeat<'i, 'p, I, L, E, P, S>(
-    stream: &mut crate::stream::Stream<'i, I, L>,
+#[allow(clippy::too_many_arguments)]
+pub fn repeat<'i, 'p, I, C, S, E>(
+    stream: &mut crate::stream::Stream<'i, I, E::Location>,
     enable_recovery: bool,
     minimum: usize,
     maximum: Option<usize>,
-    parser: &'p P,
+    parser: &'p C,
     separator: Option<&'p S>,
     allow_leading: bool,
     allow_trailing: bool,
-) -> parser::Result<Vec<P::Output>, E>
+) -> parser::Result<Vec<C::Output>, E>
 where
     'i: 'p,
     I: 'i,
-    L: location::LocationTracker<I> + 'p,
-    E: error::Error<'i, I, L> + 'p,
-    P: parser::Parser<'i, I, L, E>,
-    S: parser::Parser<'i, I, L, E>,
+    C: parser::Parser<'i, I, E>,
+    S: parser::Parser<'i, I, E>,
+    E: error::Error<'i, I> + 'p,
 {
     let max = maximum.unwrap_or(usize::MAX);
 
@@ -368,18 +365,17 @@ macro_rules! alternate {
 
 // Alternate between a set of boxed parsers (at least one) that all return the
 // same type.
-pub fn alternate<'i, 'p, I, O, L, E, P>(
-    stream: &mut crate::stream::Stream<'i, I, L>,
+pub fn alternate<'i, 'p, I, C, O, E>(
+    stream: &mut crate::stream::Stream<'i, I, E::Location>,
     enable_recovery: bool,
-    parsers: P,
+    parsers: C,
 ) -> parser::Result<O, E>
 where
     'i: 'p,
     I: 'i,
+    C: IntoIterator<Item = &'p combinator::Boxed<'i, I, O, E>>,
     O: 'i,
-    L: location::LocationTracker<I> + 'p,
-    E: error::Error<'i, I, L> + 'p,
-    P: IntoIterator<Item = &'p combinator::Boxed<'i, I, O, L, E>>,
+    E: error::Error<'i, I> + 'p,
 {
     let parsers = parsers.into_iter();
 

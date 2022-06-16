@@ -2,21 +2,19 @@
 
 use super::combinator;
 use super::error;
-use super::location;
 use super::parser;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub struct Recursive<'i, I, O, L, E> {
+pub struct Recursive<'i, I, O, E> {
     #[allow(clippy::type_complexity)]
-    inner: Rc<RefCell<Option<combinator::Boxed<'i, I, O, L, E>>>>,
+    inner: Rc<RefCell<Option<combinator::Boxed<'i, I, O, E>>>>,
 }
 
-impl<'i, I, O, L, E> Recursive<'i, I, O, L, E>
+impl<'i, I, O, E> Recursive<'i, I, O, E>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     /// Declare the existence of a recursive parser, allowing it to be used
     /// to construct parser combinators before being fulled defined.
@@ -30,7 +28,7 @@ where
     /// parsing.
     pub fn define<P>(&mut self, parser: P)
     where
-        P: parser::Parser<'i, I, L, E, Output = O> + 'i,
+        P: parser::Parser<'i, I, E, Output = O> + 'i,
     {
         assert!(
             self.inner.borrow_mut().replace(parser.boxed()).is_none(),
@@ -39,17 +37,16 @@ where
     }
 }
 
-impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for Recursive<'i, I, O, L, E>
+impl<'i, I, O, E> parser::Parser<'i, I, E> for Recursive<'i, I, O, E>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = O;
 
     fn parse_internal(
         &self,
-        stream: &mut crate::stream::Stream<'i, I, L>,
+        stream: &mut crate::stream::Stream<'i, I, E::Location>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         self.inner
@@ -60,13 +57,12 @@ where
     }
 }
 
-pub fn recursive<'i, I, O, L, E, P, F>(f: F) -> Recursive<'i, I, O, L, E>
+pub fn recursive<'i, I, F, C, E>(f: F) -> Recursive<'i, I, C::Output, E>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E, Output = O> + 'i,
-    F: FnOnce(&Recursive<'i, I, O, L, E>) -> P,
+    F: FnOnce(&Recursive<'i, I, C::Output, E>) -> C,
+    C: parser::Parser<'i, I, E> + 'i,
+    E: error::Error<'i, I>,
 {
     let mut recursive = Recursive::declare();
     recursive.define(f(&recursive));

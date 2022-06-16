@@ -6,12 +6,11 @@ use super::parser;
 use super::stream;
 
 /// Trait for recovery strategies.
-pub trait Strategy<'i, I, L, E, P>
+pub trait Strategy<'i, I, C, E>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
+    C: parser::Parser<'i, I, E>,
+    E: error::Error<'i, I>,
 {
     // Called when the given parser has failed to parse starting from the
     // current position in the given stream. The parser has successfully
@@ -26,15 +25,15 @@ where
     // after the recovery call.
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output>;
+    ) -> Option<C::Output>;
 
     /// Puts the strategy in a box to restrain it to a known type.
-    fn boxed(self) -> Boxed<'i, I, L, E, P>
+    fn boxed(self) -> Boxed<'i, I, C, E>
     where
         Self: Sized + 'i,
     {
@@ -82,7 +81,7 @@ where
     fn scan<T, F>(self, factory: F) -> Scan<Self, F>
     where
         Self: Sized,
-        T: Scanner<'i, I, L::Location, L::Span, E>,
+        T: Scanner<'i, I, E>,
         F: Fn() -> T,
     {
         Scan {
@@ -98,7 +97,7 @@ where
     where
         Self: Sized,
         F: Fn(&I) -> bool,
-        T: Strategy<'i, I, L, E, P>,
+        T: Strategy<'i, I, C, E>,
     {
         WhileNot {
             child: self,
@@ -113,7 +112,7 @@ where
     fn maybe<T>(self, inner: T) -> Maybe<Self, T>
     where
         Self: Sized,
-        T: Strategy<'i, I, L, E, P>,
+        T: Strategy<'i, I, C, E>,
     {
         Maybe { child: self, inner }
     }
@@ -140,7 +139,7 @@ where
     fn parse<T>(self, parser: T) -> Parse<Self, T>
     where
         Self: Sized,
-        T: parser::Parser<'i, I, L, E, Output = P::Output>,
+        T: parser::Parser<'i, I, E, Output = C::Output>,
     {
         Parse {
             child: self,
@@ -154,7 +153,7 @@ where
     fn push_error_here<F>(self, factory: F) -> PushErrorHere<Self, F>
     where
         Self: Sized,
-        F: Fn(L::Location) -> E,
+        F: Fn(<E::Location as location::LocationTracker<I>>::Location) -> E,
     {
         PushErrorHere {
             child: self,
@@ -166,7 +165,7 @@ where
     fn push_error_for_token<F>(self, factory: F) -> PushErrorForToken<Self, F>
     where
         Self: Sized,
-        F: Fn(Option<&I>, L::Span) -> E,
+        F: Fn(Option<&I>, <E::Location as location::LocationTracker<I>>::Span) -> E,
     {
         PushErrorForToken {
             child: self,
@@ -179,7 +178,7 @@ where
     fn update_errors_here<F>(self, updater: F) -> UpdateErrorsHere<Self, F>
     where
         Self: Sized,
-        F: Fn(&mut Vec<E>, L::Location),
+        F: Fn(&mut Vec<E>, <E::Location as location::LocationTracker<I>>::Location),
     {
         UpdateErrorsHere {
             child: self,
@@ -192,7 +191,7 @@ where
     fn update_errors_for_token<F>(self, updater: F) -> UpdateErrorsForToken<Self, F>
     where
         Self: Sized,
-        F: Fn(&mut Vec<E>, Option<&I>, L::Span),
+        F: Fn(&mut Vec<E>, Option<&I>, <E::Location as location::LocationTracker<I>>::Span),
     {
         UpdateErrorsForToken {
             child: self,
@@ -203,10 +202,10 @@ where
     /// Succeed with recovery by emitting the given output, as if the tokens
     /// from the start position up to the current stream position had been
     /// parsed into that.
-    fn and_return(self, output: P::Output) -> Return<Self, P::Output>
+    fn and_return(self, output: C::Output) -> Return<Self, C::Output>
     where
         Self: Sized,
-        P::Output: Clone,
+        C::Output: Clone,
     {
         Return {
             child: self,
@@ -218,7 +217,7 @@ where
     fn and_return_with<F>(self, output: F) -> ReturnWith<Self, F>
     where
         Self: Sized,
-        F: Fn(L::Span) -> P::Output,
+        F: Fn(<E::Location as location::LocationTracker<I>>::Span) -> C::Output,
     {
         ReturnWith {
             child: self,
@@ -231,21 +230,20 @@ where
 /// starting point for constructing strategies. See [attempt_to()].
 pub struct Nothing();
 
-impl<'i, I, L, E, P> Strategy<'i, I, L, E, P> for Nothing
+impl<'i, I, C, E> Strategy<'i, I, C, E> for Nothing
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
+    C: parser::Parser<'i, I, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        _parser: &P,
-        _stream: &mut stream::Stream<'i, I, L>,
+        _parser: &C,
+        _stream: &mut stream::Stream<'i, I, E::Location>,
         _started_at: &stream::SavedState,
         _failed_at: &mut stream::SavedState,
         _errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         None
     }
 }
@@ -270,25 +268,24 @@ pub fn attempt_to() -> Nothing {
 }
 
 /// See [Strategy::boxed()].
-pub struct Boxed<'i, I, L, E, P> {
-    pub(crate) strategy: Box<dyn Strategy<'i, I, L, E, P> + 'i>,
+pub struct Boxed<'i, I, C, E> {
+    pub(crate) strategy: Box<dyn Strategy<'i, I, C, E> + 'i>,
 }
 
-impl<'i, I, L, E, P> Strategy<'i, I, L, E, P> for Boxed<'i, I, L, E, P>
+impl<'i, I, C, E> Strategy<'i, I, C, E> for Boxed<'i, I, C, E>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
+    C: parser::Parser<'i, I, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.strategy
             .recover(parser, stream, started_at, failed_at, errors)
     }
@@ -299,22 +296,21 @@ pub struct SeekToFailed<S> {
     child: S,
 }
 
-impl<'i, I, L, E, P, S> Strategy<'i, I, L, E, P> for SeekToFailed<S>
+impl<'i, I, C, S, E> Strategy<'i, I, C, E> for SeekToFailed<S>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -329,22 +325,21 @@ pub struct Skip<S> {
     child: S,
 }
 
-impl<'i, I, L, E, P, S> Strategy<'i, I, L, E, P> for Skip<S>
+impl<'i, I, C, S, E> Strategy<'i, I, C, E> for Skip<S>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -360,23 +355,22 @@ pub struct Find<S, F> {
     predicate: F,
 }
 
-impl<'i, I, L, E, P, S, F> Strategy<'i, I, L, E, P> for Find<S, F>
+impl<'i, I, C, S, F, E> Strategy<'i, I, C, E> for Find<S, F>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
     F: Fn(&I) -> bool,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -389,36 +383,47 @@ where
 }
 
 /// Trait used to implement the [Strategy::scan()] recovery strategy.
-pub trait Scanner<'i, I, L, S, E> {
+pub trait Scanner<'i, I, E = error::Simple<'i, I>>
+where
+    I: 'i,
+    E: error::Error<'i, I>,
+{
     /// Called by [Strategy::scan()] recovery strategy for each token
     /// encountered on the input until this returns true. The given span is
     /// the span associated with the token. The given error list may be
     /// manipulated as needed.
-    fn scan(&mut self, token: &'i I, span: S, errors: &mut Vec<E>) -> bool;
+    fn scan(
+        &mut self,
+        token: &'i I,
+        span: <E::Location as location::LocationTracker<I>>::Span,
+        errors: &mut Vec<E>,
+    ) -> bool;
 
     /// Called by [Strategy::scan()] recovery strategy when EOF is
     /// encountered.
-    fn eof(&mut self, _location: L, _errors: &mut Vec<E>) {}
+    fn eof(
+        &mut self,
+        _location: <E::Location as location::LocationTracker<I>>::Location,
+        _errors: &mut Vec<E>,
+    ) {
+    }
 }
 
 /// See [nested_delimiters()].
-pub struct NestedDelimiters<'i, I, L>
-where
-    L: location::LocationTracker<I>,
-{
+pub struct NestedDelimiters<'i, I, S> {
     types: &'i [(I, I)],
-    stack: Vec<(usize, &'i I, L::Span)>,
+    stack: Vec<(usize, &'i I, S)>,
 }
 
-impl<'i, I, L> NestedDelimiters<'i, I, L>
+impl<'i, I, S> NestedDelimiters<'i, I, S>
 where
-    L: location::LocationTracker<I>,
-    L::Span: Clone,
     I: PartialEq,
+    S: Clone,
 {
-    fn handle_token<E>(&mut self, token: &'i I, span: L::Span, errors: &mut Vec<E>)
+    fn handle_token<E, L>(&mut self, token: &'i I, span: S, errors: &mut Vec<E>)
     where
-        E: error::Error<'i, I, L>,
+        E: error::Error<'i, I, Location = L>,
+        L: location::LocationTracker<I, Span = S>,
     {
         // Try matching the right delimiter for the top of the stack first.
         // This handles the left = right delimiter case (like || for lambdas
@@ -503,20 +508,29 @@ where
     }
 }
 
-impl<'i, I, L, E> Scanner<'i, I, L::Location, L::Span, E> for NestedDelimiters<'i, I, L>
+impl<'i, I, E> Scanner<'i, I, E>
+    for NestedDelimiters<'i, I, <E::Location as location::LocationTracker<I>>::Span>
 where
-    L: location::LocationTracker<I>,
-    L::Location: Clone,
-    L::Span: Clone,
-    E: error::Error<'i, I, L>,
     I: PartialEq,
+    E: error::Error<'i, I>,
+    <E::Location as location::LocationTracker<I>>::Location: Clone,
+    <E::Location as location::LocationTracker<I>>::Span: Clone,
 {
-    fn scan(&mut self, token: &'i I, span: L::Span, errors: &mut Vec<E>) -> bool {
+    fn scan(
+        &mut self,
+        token: &'i I,
+        span: <E::Location as location::LocationTracker<I>>::Span,
+        errors: &mut Vec<E>,
+    ) -> bool {
         self.handle_token(token, span, errors);
         self.stack.is_empty()
     }
 
-    fn eof(&mut self, location: L::Location, errors: &mut Vec<E>) {
+    fn eof(
+        &mut self,
+        location: <E::Location as location::LocationTracker<I>>::Location,
+        errors: &mut Vec<E>,
+    ) {
         // Report unmatched left delimiters.
         while let Some((_, left_token, left_span)) = self.stack.pop() {
             errors.push(E::unmatched_left_delimiter(
@@ -537,12 +551,12 @@ where
 /// prefix this with [Strategy::find()] to find the expected left delimiter
 /// first, and suffix this with [Strategy::skip()] to skip past the right
 /// delimiter.
-pub fn nested_delimiters<'i, I, L>(types: &'i [(I, I)]) -> impl Fn() -> NestedDelimiters<'i, I, L>
+pub fn nested_delimiters<'i, I, E>(types: &'i [(I, I)]) -> impl Fn() -> NestedDelimiters<'i, I, E>
 where
-    L: location::LocationTracker<I>,
-    L::Location: Clone,
-    L::Span: Clone,
     I: PartialEq,
+    E: error::Error<'i, I>,
+    <E::Location as location::LocationTracker<I>>::Location: Clone,
+    <E::Location as location::LocationTracker<I>>::Span: Clone,
 {
     || NestedDelimiters {
         types,
@@ -556,24 +570,23 @@ pub struct Scan<S, F> {
     factory: F,
 }
 
-impl<'i, I, L, E, P, S, T, F> Strategy<'i, I, L, E, P> for Scan<S, F>
+impl<'i, I, C, S, F, T, E> Strategy<'i, I, C, E> for Scan<S, F>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    T: Scanner<'i, I, L::Location, L::Span, E>,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
     F: Fn() -> T,
+    T: Scanner<'i, I, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -599,24 +612,23 @@ pub struct WhileNot<S, F, T> {
     inner: T,
 }
 
-impl<'i, I, L, E, P, S, F, T> Strategy<'i, I, L, E, P> for WhileNot<S, F, T>
+impl<'i, I, C, S, F, T, E> Strategy<'i, I, C, E> for WhileNot<S, F, T>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
     F: Fn(&I) -> bool,
-    T: Strategy<'i, I, L, E, P>,
+    T: Strategy<'i, I, C, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -640,23 +652,22 @@ pub struct Maybe<S, T> {
     inner: T,
 }
 
-impl<'i, I, L, E, P, S, T> Strategy<'i, I, L, E, P> for Maybe<S, T>
+impl<'i, I, C, S, T, E> Strategy<'i, I, C, E> for Maybe<S, T>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    T: Strategy<'i, I, L, E, P>,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    T: Strategy<'i, I, C, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -702,22 +713,21 @@ impl<S> Retry<S> {
     }
 }
 
-impl<'i, I, L, E, P, S> Strategy<'i, I, L, E, P> for Retry<S>
+impl<'i, I, C, S, E> Strategy<'i, I, C, E> for Retry<S>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| match parser.parse_internal(stream, !self.exact) {
@@ -769,23 +779,22 @@ impl<S, T> Parse<S, T> {
     }
 }
 
-impl<'i, I, L, E, P, S, T> Strategy<'i, I, L, E, P> for Parse<S, T>
+impl<'i, I, C, S, T, E> Strategy<'i, I, C, E> for Parse<S, T>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    T: parser::Parser<'i, I, L, E, Output = P::Output>,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    T: parser::Parser<'i, I, E, Output = C::Output>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| match self.parser.parse_internal(stream, !self.exact) {
@@ -813,23 +822,22 @@ pub struct PushErrorHere<S, F> {
     factory: F,
 }
 
-impl<'i, I, L, E, P, S, F> Strategy<'i, I, L, E, P> for PushErrorHere<S, F>
+impl<'i, I, C, S, F, E> Strategy<'i, I, C, E> for PushErrorHere<S, F>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    F: Fn(L::Location) -> E,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    F: Fn(<E::Location as location::LocationTracker<I>>::Location) -> E,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -845,23 +853,22 @@ pub struct PushErrorForToken<S, F> {
     factory: F,
 }
 
-impl<'i, I, L, E, P, S, F> Strategy<'i, I, L, E, P> for PushErrorForToken<S, F>
+impl<'i, I, C, S, F, E> Strategy<'i, I, C, E> for PushErrorForToken<S, F>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    F: Fn(Option<&I>, L::Span) -> E,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    F: Fn(Option<&I>, <E::Location as location::LocationTracker<I>>::Span) -> E,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -877,23 +884,22 @@ pub struct UpdateErrorsHere<S, F> {
     updater: F,
 }
 
-impl<'i, I, L, E, P, S, F> Strategy<'i, I, L, E, P> for UpdateErrorsHere<S, F>
+impl<'i, I, C, S, F, E> Strategy<'i, I, C, E> for UpdateErrorsHere<S, F>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    F: Fn(&mut Vec<E>, L::Location) -> E,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    F: Fn(&mut Vec<E>, <E::Location as location::LocationTracker<I>>::Location) -> E,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -909,23 +915,22 @@ pub struct UpdateErrorsForToken<S, F> {
     updater: F,
 }
 
-impl<'i, I, L, E, P, S, F> Strategy<'i, I, L, E, P> for UpdateErrorsForToken<S, F>
+impl<'i, I, C, S, F, E> Strategy<'i, I, C, E> for UpdateErrorsForToken<S, F>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    F: Fn(&mut Vec<E>, Option<&I>, L::Span) -> E,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    F: Fn(&mut Vec<E>, Option<&I>, <E::Location as location::LocationTracker<I>>::Span) -> E,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
@@ -941,23 +946,22 @@ pub struct Return<S, O> {
     output: O,
 }
 
-impl<'i, I, L, E, P, S> Strategy<'i, I, L, E, P> for Return<S, P::Output>
+impl<'i, I, C, S, E> Strategy<'i, I, C, E> for Return<S, C::Output>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    P::Output: Clone,
+    C: parser::Parser<'i, I, E>,
+    C::Output: Clone,
+    S: Strategy<'i, I, C, E>,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| Some(self.output.clone()))
@@ -970,23 +974,22 @@ pub struct ReturnWith<S, F> {
     output: F,
 }
 
-impl<'i, I, L, E, P, S, F> Strategy<'i, I, L, E, P> for ReturnWith<S, F>
+impl<'i, I, C, S, F, E> Strategy<'i, I, C, E> for ReturnWith<S, F>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
-    P: parser::Parser<'i, I, L, E>,
-    S: Strategy<'i, I, L, E, P>,
-    F: Fn(L::Span) -> P::Output,
+    C: parser::Parser<'i, I, E>,
+    S: Strategy<'i, I, C, E>,
+    F: Fn(<E::Location as location::LocationTracker<I>>::Span) -> C::Output,
+    E: error::Error<'i, I>,
 {
     fn recover(
         &self,
-        parser: &P,
-        stream: &mut stream::Stream<'i, I, L>,
+        parser: &C,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<E>,
-    ) -> Option<P::Output> {
+    ) -> Option<C::Output> {
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| Some((self.output)(stream.spanning_back_to(started_at))))

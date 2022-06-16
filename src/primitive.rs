@@ -1,24 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::error;
-use super::location;
 use super::parser;
 use super::stream;
 
 /// See [empty()].
 pub struct Empty();
 
-impl<'i, I, L, E> parser::Parser<'i, I, L, E> for Empty
+impl<'i, I, E> parser::Parser<'i, I, E> for Empty
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = ();
 
     fn parse_internal(
         &self,
-        _stream: &mut stream::Stream<'i, I, L>,
+        _stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         parser::Result::Success(())
@@ -35,17 +33,16 @@ pub struct None<O> {
     phantom: std::marker::PhantomData<O>,
 }
 
-impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for None<O>
+impl<'i, I, O, E> parser::Parser<'i, I, E> for None<O>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = Option<O>;
 
     fn parse_internal(
         &self,
-        _stream: &mut stream::Stream<'i, I, L>,
+        _stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         parser::Result::Success(None)
@@ -63,17 +60,16 @@ pub fn none<O>() -> None<O> {
 /// See [end()].
 pub struct End();
 
-impl<'i, I, L, E> parser::Parser<'i, I, L, E> for End
+impl<'i, I, E> parser::Parser<'i, I, E> for End
 where
     I: 'i,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = ();
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         if stream.eof() {
@@ -104,17 +100,16 @@ where
     expected: &'i I,
 }
 
-impl<'i, I, L, E> parser::Parser<'i, I, L, E> for Just<'i, I>
+impl<'i, I, E> parser::Parser<'i, I, E> for Just<'i, I>
 where
     I: 'i + PartialEq,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = &'i I;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Match the incoming token.
@@ -146,26 +141,21 @@ where
 }
 
 /// See [filter()].
-pub struct Filter<I, F>
-where
-    F: Fn(&I) -> bool,
-{
+pub struct Filter<F> {
     filter: F,
-    phantom: std::marker::PhantomData<I>,
 }
 
-impl<'i, I, F, L, E> parser::Parser<'i, I, L, E> for Filter<I, F>
+impl<'i, I, F, E> parser::Parser<'i, I, E> for Filter<F>
 where
     I: 'i,
     F: Fn(&I) -> bool,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = &'i I;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         stream.attempt(|stream| {
@@ -190,37 +180,29 @@ where
 
 /// Match the incoming token with the given filter function, returning a
 /// reference to the incoming token if the filter returned true.
-pub fn filter<I, F>(filter: F) -> Filter<I, F>
+pub fn filter<I, F>(filter: F) -> Filter<F>
 where
     F: Fn(&I) -> bool,
 {
-    Filter {
-        filter,
-        phantom: Default::default(),
-    }
+    Filter { filter }
 }
 
 /// See [filter_map()].
-pub struct FilterMap<I, O, F>
-where
-    F: Fn(&I) -> Option<O>,
-{
+pub struct FilterMap<F> {
     filter: F,
-    phantom: std::marker::PhantomData<(I, O)>,
 }
 
-impl<'i, I, O, F, L, E> parser::Parser<'i, I, L, E> for FilterMap<I, O, F>
+impl<'i, I, F, O, E> parser::Parser<'i, I, E> for FilterMap<F>
 where
     I: 'i,
     F: Fn(&I) -> Option<O>,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = O;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Match the incoming token.
@@ -243,37 +225,29 @@ where
 
 /// Match the incoming token with the given filter function, returning the
 /// result of the filter function if it returned Some.
-pub fn filter_map<I, O, F>(filter: F) -> FilterMap<I, O, F>
+pub fn filter_map<I, O, F>(filter: F) -> FilterMap<F>
 where
     F: Fn(&I) -> Option<O>,
 {
-    FilterMap {
-        filter,
-        phantom: Default::default(),
-    }
+    FilterMap { filter }
 }
 
 /// See [seq()].
-pub struct Seq<'i, I, O>
-where
-    I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
-{
+pub struct Seq<'i, O> {
     expected: &'i O,
 }
 
-impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for Seq<'i, I, O>
+impl<'i, I, O, E> parser::Parser<'i, I, E> for Seq<'i, O>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = &'i O;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         stream.attempt(|stream| {
@@ -307,7 +281,7 @@ where
 /// Note: couldn't be bothered with the magic to make just() generic enough to
 /// work for single inputs as well. I'm not sure how it works in Chumsky
 /// exactly, but can't think of any reason why it wouldn't work here, too.
-pub fn seq<'i, I, O>(expected: &'i O) -> Seq<'i, I, O>
+pub fn seq<'i, I, O>(expected: &'i O) -> Seq<'i, O>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
@@ -316,26 +290,21 @@ where
 }
 
 /// See [one_of()].
-pub struct OneOf<'i, I, O>
-where
-    I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
-{
+pub struct OneOf<'i, O> {
     expected: &'i O,
 }
 
-impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for OneOf<'i, I, O>
+impl<'i, I, O, E> parser::Parser<'i, I, E> for OneOf<'i, O>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = &'i I;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Get the next token from the input stream, and match it against the
@@ -364,7 +333,7 @@ where
 
 /// Match one of the given sequence of tokens exactly, returning a reference to
 /// the incoming token that matched.
-pub fn one_of<'i, I, O>(expected: &'i O) -> OneOf<'i, I, O>
+pub fn one_of<'i, I, O>(expected: &'i O) -> OneOf<'i, O>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
@@ -373,26 +342,21 @@ where
 }
 
 /// See [none_of()].
-pub struct NoneOf<'i, I, O>
-where
-    I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
-{
+pub struct NoneOf<'i, O> {
     rejected: &'i O,
 }
 
-impl<'i, I, O, L, E> parser::Parser<'i, I, L, E> for NoneOf<'i, I, O>
+impl<'i, I, O, E> parser::Parser<'i, I, E> for NoneOf<'i, O>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
-    L: location::LocationTracker<I>,
-    E: error::Error<'i, I, L>,
+    E: error::Error<'i, I>,
 {
     type Output = &'i I;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, L>,
+        stream: &mut stream::Stream<'i, I, E::Location>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Get the next token from the input stream, and match it against the
@@ -432,7 +396,7 @@ where
 
 /// Match the next token if it matches none of the given tokens, returning a
 /// reference to the incoming token that matched.
-pub fn none_of<'i, I, O>(rejected: &'i O) -> NoneOf<'i, I, O>
+pub fn none_of<'i, I, O>(rejected: &'i O) -> NoneOf<'i, O>
 where
     I: 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,

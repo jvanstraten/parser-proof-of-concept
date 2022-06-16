@@ -50,16 +50,26 @@ impl<L, S> At<L, S> {
 }
 
 /// Trait that allows error messages to be constructed.
-pub trait Error<'i, I, L>
+pub trait Error<'i, I>
 where
     Self: Fallback,
     I: 'i,
-    L: location::LocationTracker<I>,
 {
+    /// The location tracker used to provide location information for the
+    /// error messages.
+    type Location: location::LocationTracker<I>;
+
     /// Constructor for error messages stating that one of a number of tokens
     /// was expected but another was found. The span corresponds to the token
     /// that was found. None is used for EOF.
-    fn expected_found<J>(expected: J, found: Option<&'i I>, at: At<L::Location, L::Span>) -> Self
+    fn expected_found<J>(
+        expected: J,
+        found: Option<&'i I>,
+        at: At<
+            <Self::Location as location::LocationTracker<I>>::Location,
+            <Self::Location as location::LocationTracker<I>>::Span,
+        >,
+    ) -> Self
     where
         J: IntoIterator<Item = Option<&'i I>>,
         J::IntoIter: 'i;
@@ -73,32 +83,49 @@ where
     fn is_expected_found(&self) -> bool;
 
     /// Returns the location information associated with this error, if any.
-    fn location(&self) -> At<&L::Location, &L::Span>;
+    fn location(
+        &self,
+    ) -> At<
+        &<Self::Location as location::LocationTracker<I>>::Location,
+        &<Self::Location as location::LocationTracker<I>>::Span,
+    >;
 
     /// Constructor for an unmatched left delimiter error.
     fn unmatched_left_delimiter(
         left_token: &'i I,
-        left_span: L::Span,
-        close_before: At<L::Location, L::Span>,
+        left_span: <Self::Location as location::LocationTracker<I>>::Span,
+        close_before: At<
+            <Self::Location as location::LocationTracker<I>>::Location,
+            <Self::Location as location::LocationTracker<I>>::Span,
+        >,
     ) -> Self;
 
     /// Constructor for an unmatched right delimiter error.
     fn unmatched_right_delimiter(
         right_token: &'i I,
-        right_span: L::Span,
-        open_before: At<L::Location, L::Span>,
+        right_span: <Self::Location as location::LocationTracker<I>>::Span,
+        open_before: At<
+            <Self::Location as location::LocationTracker<I>>::Location,
+            <Self::Location as location::LocationTracker<I>>::Span,
+        >,
     ) -> Self;
 
     /// Constructor for an unmatched delimiter type error.
     fn unmatched_delimiter_type(
         left_token: &'i I,
-        left_span: L::Span,
+        left_span: <Self::Location as location::LocationTracker<I>>::Span,
         right_token: &'i I,
-        right_span: L::Span,
+        right_span: <Self::Location as location::LocationTracker<I>>::Span,
     ) -> Self;
 
     /// Constructor for a custom message with a location.
-    fn custom<M: ToString>(msg: M, at: At<L::Location, L::Span>) -> Self;
+    fn custom<M: ToString>(
+        msg: M,
+        at: At<
+            <Self::Location as location::LocationTracker<I>>::Location,
+            <Self::Location as location::LocationTracker<I>>::Span,
+        >,
+    ) -> Self;
 }
 
 /// Trait that allows fallback error messages to be constructed when no
@@ -110,7 +137,7 @@ pub trait Fallback {
 
 /// Simple error message type.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Simple<'i, I, L>
+pub enum Simple<'i, I, L = location::Simple>
 where
     L: location::LocationTracker<I>,
     I: Eq + std::hash::Hash,
@@ -135,11 +162,13 @@ where
     Custom(String, At<L::Location, L::Span>),
 }
 
-impl<'i, I, L> Error<'i, I, L> for Simple<'i, I, L>
+impl<'i, I, L> Error<'i, I> for Simple<'i, I, L>
 where
     I: 'i + Eq + std::hash::Hash,
     L: location::LocationTracker<I>,
 {
+    type Location = L;
+
     fn expected_found<J>(expected: J, found: Option<&'i I>, at: At<L::Location, L::Span>) -> Self
     where
         J: IntoIterator<Item = Option<&'i I>>,
