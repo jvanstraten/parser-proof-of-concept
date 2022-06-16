@@ -201,7 +201,7 @@ where
         let before_separator =
             if let (Some(separator), true) = (separator, !output.is_empty() || allow_leading) {
                 let before_separator = stream.save();
-                match parser::Parser::parse_internal(separator, stream, recover) {
+                match parser::Parser::parse_internal(separator, stream, recover && !output.is_empty()) {
                     parser::Result::Success(_) => (),
                     parser::Result::Recovered(_, es_b) => {
                         if let Some(es) = &mut recovery {
@@ -211,7 +211,10 @@ where
                         }
                     }
                     parser::Result::Failed(i, es) => {
-                        if output.len() >= minimum {
+                        if output.is_empty() {
+                            // Leading separator; this is optional, so don't
+                            // fail.
+                        } else if output.len() >= minimum {
                             // We've already matched enough, we're done.
                             return parser::Result::Success(output);
                         } else {

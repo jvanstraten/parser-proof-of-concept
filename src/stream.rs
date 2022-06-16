@@ -116,7 +116,7 @@ where
     pub fn restore(&mut self, saved_state: &SavedState) {
         assert!(*saved_state.index <= self.index);
         let amount = self.index - *saved_state.index;
-        assert!(amount >= self.index_in_buffer);
+        assert!(amount <= self.index_in_buffer);
         self.index_in_buffer -= amount;
         self.index -= amount;
     }

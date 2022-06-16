@@ -470,19 +470,19 @@ pub trait Parser<'i, I: 'i> {
     /// Parses the alternation of the current and given parser, returning the
     /// result of the first parser that matches. The return types of the two
     /// parsers must thus match. Additional parsers can be added using
-    /// [combinator::ChainAlternatives::and()].
+    /// [combinator::Alters::and()].
     ///
-    /// Note: chain_alternatives() is kinda like choice() in Chumsky, but I'm
-    /// too lazy to write it out that way when I can just copy-paste chain().
-    fn chain_alternatives<A>(
+    /// Note: alters() is kinda like choice() in Chumsky, but I'm too lazy to
+    /// write it out that way when I can just copy-paste chain().
+    fn alters<A>(
         self,
         other: A,
-    ) -> combinator::ChainAlternatives<'i, I, Self::Output, Self::Error>
+    ) -> combinator::Alters<'i, I, Self::Output, Self::Error>
     where
         A: Parser<'i, I, Output = Self::Output, Error = Self::Error> + 'i,
         Self: Sized + 'i,
     {
-        combinator::ChainAlternatives {
+        combinator::Alters {
             parsers: vec![self.boxed(), other.boxed()],
         }
     }

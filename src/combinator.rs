@@ -249,7 +249,7 @@ where
     F: Fn(
         C::Output,
         <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
-    ) -> TryMapResult<O, C::Error>, // TODO Into<TryMapResult<O, E>>, impl Result -> TryMapResult
+    ) -> TryMapResult<O, C::Error>,
 {
     type Output = O;
     type Error = C::Error;
@@ -507,12 +507,12 @@ where
     }
 }
 
-/// See [parser::Parser::chain_alternatives()].
-pub struct ChainAlternatives<'i, I, O, E> {
+/// See [parser::Parser::alters()].
+pub struct Alters<'i, I, O, E> {
     pub(crate) parsers: Vec<Boxed<'i, I, O, E>>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for ChainAlternatives<'i, I, O, E>
+impl<'i, I, O, E> parser::Parser<'i, I> for Alters<'i, I, O, E>
 where
     I: 'i,
     O: 'i,
@@ -530,19 +530,19 @@ where
     }
 }
 
-impl<'i, I, O, E> ChainAlternatives<'i, I, O, E>
+impl<'i, I, O, E> Alters<'i, I, O, E>
 where
     I: 'i,
     E: error::Error<'i, I>,
 {
     /// Append an additional parser to this chain.
-    pub fn and<B>(self, other: B) -> Chain<'i, I, O, E>
+    pub fn and<B>(self, other: B) -> Alters<'i, I, O, E>
     where
         B: parser::Parser<'i, I, Output = O, Error = E> + 'i,
     {
         let mut parsers = self.parsers;
         parsers.push(other.boxed());
-        Chain { parsers }
+        Alters { parsers }
     }
 }
 
@@ -720,4 +720,331 @@ mod tests {
         assert_eq!(stream.next(), Some(ParseResult::Success(('A', 0..1))));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
     }
+
+    // TODO map_err, map_err_with_span, try_map
+
+    #[test]
+    fn test_then() {
+        let parser = just(&'a')
+            .then(just(&'b'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success((&'a', &'b'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['a', 'c', 'b']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(1, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a', 'c', 'b']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+    }
+
+    #[test]
+    fn test_then_ignore() {
+        let parser = just(&'a')
+            .then_ignore(just(&'b'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['a', 'c', 'b']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(1, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a', 'c', 'b']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+    }
+
+    #[test]
+    fn test_ignore_then() {
+        let parser = just(&'a')
+            .ignore_then(just(&'b'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'b')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['a', 'c', 'b']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(1, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a', 'c', 'b']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+    }
+
+    #[test]
+    fn test_padded_by() {
+        let parser = just(&'a')
+            .padded_by(just(&'b'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['b', 'a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['b', 'a', 'c', 'b']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(2, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'a', 'c', 'b']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+    }
+
+    #[test]
+    fn test_delimited_by() {
+        let parser = just(&'b')
+            .delimited_by(just(&'a'), just(&'c'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c', 'd']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'b')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['d']);
+
+        let mut stream = parser.stream(&['a', 'b', 'd', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(2, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a', 'b', 'd', 'c']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+    }
+
+    #[test]
+    fn test_chain() {
+        let parser = just(&'a')
+            .chain(just(&'b'))
+            .and(just(&'c'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c', 'd']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'b', &'c'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['d']);
+
+        let mut stream = parser.stream(&['a', 'b', 'd', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(2, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a', 'b', 'd', 'c']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+    }
+
+    #[test]
+    fn test_or() {
+        let parser = just(&'a')
+            .or(just(&'b'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'b')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'a']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+    }
+
+    #[test]
+    fn test_alters() {
+        let parser = just(&'a')
+            .alters(just(&'b'))
+            .and(just(&'c'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'b')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'a']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'c')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'a']);
+
+        let mut stream = parser.stream(&['d', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['d', 'b', 'a']);
+    }
+
+    #[test]
+    fn test_or_not() {
+        let parser = just(&'a')
+            .or_not()
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(Some(&'a'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(None)));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c', 'a']);
+    }
+
+    #[test]
+    fn test_repeated_any() {
+        let parser = just(&'a')
+            .repeated()
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c', 'a']);
+    }
+
+    #[test]
+    fn test_repeated_many() {
+        let parser = just(&'a')
+            .repeated()
+            .at_least(1)
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c', 'a']);
+    }
+
+    #[test]
+    fn test_repeated_max() {
+        let parser = just(&'a')
+            .repeated()
+            .at_most(2)
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a']);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c', 'a']);
+    }
+
+    #[test]
+    fn test_separated_by() {
+        let parser = just(&'a')
+            .separated_by(just(&','))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', ',', 'b', ',', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![',', 'b', ',', 'c']);
+
+        let mut stream = parser.stream(&['a', ',', 'a', ',', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![',', 'c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a', 'a']);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c', 'a']);
+
+        let mut stream = parser.stream(&[',', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![',', 'a']);
+
+        let mut stream = parser.stream(&['a', ',']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![',']);
+    }
+
+    #[test]
+    fn test_separated_by_allow_leading() {
+        let parser = just(&'a')
+            .separated_by(just(&','))
+            .allow_leading()
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', ',', 'b', ',', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![',', 'b', ',', 'c']);
+
+        let mut stream = parser.stream(&['a', ',', 'a', ',', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![',', 'c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a', 'a']);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c', 'a']);
+
+        let mut stream = parser.stream(&[',', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+
+        let mut stream = parser.stream(&['a', ',']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![',']);
+    }
+
+    #[test]
+    fn test_separated_by_allow_trailing() {
+        let parser = just(&'a')
+            .separated_by(just(&','))
+            .allow_trailing()
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', ',', 'b', ',', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', ',', 'c']);
+
+        let mut stream = parser.stream(&['a', ',', 'a', ',', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a', &'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['a', 'a', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['a', 'a']);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c', 'a']);
+
+        let mut stream = parser.stream(&[',', 'a']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![',', 'a']);
+
+        let mut stream = parser.stream(&['a', ',']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+    }
+
 }
