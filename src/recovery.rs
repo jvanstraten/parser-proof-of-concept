@@ -153,7 +153,7 @@ where
     fn push_error_here<F>(self, factory: F) -> PushErrorHere<Self, F>
     where
         Self: Sized,
-        F: Fn(<E::Location as location::LocationTracker<I>>::Location) -> E,
+        F: Fn(<E::Location as location::Tracker<I>>::Location) -> E,
     {
         PushErrorHere {
             child: self,
@@ -165,7 +165,7 @@ where
     fn push_error_for_token<F>(self, factory: F) -> PushErrorForToken<Self, F>
     where
         Self: Sized,
-        F: Fn(Option<&I>, <E::Location as location::LocationTracker<I>>::Span) -> E,
+        F: Fn(Option<&I>, <E::Location as location::Tracker<I>>::Span) -> E,
     {
         PushErrorForToken {
             child: self,
@@ -178,7 +178,7 @@ where
     fn update_errors_here<F>(self, updater: F) -> UpdateErrorsHere<Self, F>
     where
         Self: Sized,
-        F: Fn(&mut Vec<E>, <E::Location as location::LocationTracker<I>>::Location),
+        F: Fn(&mut Vec<E>, <E::Location as location::Tracker<I>>::Location),
     {
         UpdateErrorsHere {
             child: self,
@@ -191,7 +191,7 @@ where
     fn update_errors_for_token<F>(self, updater: F) -> UpdateErrorsForToken<Self, F>
     where
         Self: Sized,
-        F: Fn(&mut Vec<E>, Option<&I>, <E::Location as location::LocationTracker<I>>::Span),
+        F: Fn(&mut Vec<E>, Option<&I>, <E::Location as location::Tracker<I>>::Span),
     {
         UpdateErrorsForToken {
             child: self,
@@ -217,7 +217,7 @@ where
     fn and_return_with<F>(self, output: F) -> ReturnWith<Self, F>
     where
         Self: Sized,
-        F: Fn(<E::Location as location::LocationTracker<I>>::Span) -> C::Output,
+        F: Fn(<E::Location as location::Tracker<I>>::Span) -> C::Output,
     {
         ReturnWith {
             child: self,
@@ -395,7 +395,7 @@ where
     fn scan(
         &mut self,
         token: &'i I,
-        span: <E::Location as location::LocationTracker<I>>::Span,
+        span: <E::Location as location::Tracker<I>>::Span,
         errors: &mut Vec<E>,
     ) -> bool;
 
@@ -403,7 +403,7 @@ where
     /// encountered.
     fn eof(
         &mut self,
-        _location: <E::Location as location::LocationTracker<I>>::Location,
+        _location: <E::Location as location::Tracker<I>>::Location,
         _errors: &mut Vec<E>,
     ) {
     }
@@ -423,7 +423,7 @@ where
     fn handle_token<E, L>(&mut self, token: &'i I, span: S, errors: &mut Vec<E>)
     where
         E: error::Error<'i, I, Location = L>,
-        L: location::LocationTracker<I, Span = S>,
+        L: location::Tracker<I, Span = S>,
     {
         // Try matching the right delimiter for the top of the stack first.
         // This handles the left = right delimiter case (like || for lambdas
@@ -509,17 +509,17 @@ where
 }
 
 impl<'i, I, E> Scanner<'i, I, E>
-    for NestedDelimiters<'i, I, <E::Location as location::LocationTracker<I>>::Span>
+    for NestedDelimiters<'i, I, <E::Location as location::Tracker<I>>::Span>
 where
     I: PartialEq,
     E: error::Error<'i, I>,
-    <E::Location as location::LocationTracker<I>>::Location: Clone,
-    <E::Location as location::LocationTracker<I>>::Span: Clone,
+    <E::Location as location::Tracker<I>>::Location: Clone,
+    <E::Location as location::Tracker<I>>::Span: Clone,
 {
     fn scan(
         &mut self,
         token: &'i I,
-        span: <E::Location as location::LocationTracker<I>>::Span,
+        span: <E::Location as location::Tracker<I>>::Span,
         errors: &mut Vec<E>,
     ) -> bool {
         self.handle_token(token, span, errors);
@@ -528,7 +528,7 @@ where
 
     fn eof(
         &mut self,
-        location: <E::Location as location::LocationTracker<I>>::Location,
+        location: <E::Location as location::Tracker<I>>::Location,
         errors: &mut Vec<E>,
     ) {
         // Report unmatched left delimiters.
@@ -555,8 +555,8 @@ pub fn nested_delimiters<'i, I, E>(types: &'i [(I, I)]) -> impl Fn() -> NestedDe
 where
     I: PartialEq,
     E: error::Error<'i, I>,
-    <E::Location as location::LocationTracker<I>>::Location: Clone,
-    <E::Location as location::LocationTracker<I>>::Span: Clone,
+    <E::Location as location::Tracker<I>>::Location: Clone,
+    <E::Location as location::Tracker<I>>::Span: Clone,
 {
     || NestedDelimiters {
         types,
@@ -827,7 +827,7 @@ where
     I: 'i,
     C: parser::Parser<'i, I, E>,
     S: Strategy<'i, I, C, E>,
-    F: Fn(<E::Location as location::LocationTracker<I>>::Location) -> E,
+    F: Fn(<E::Location as location::Tracker<I>>::Location) -> E,
     E: error::Error<'i, I>,
 {
     fn recover(
@@ -858,7 +858,7 @@ where
     I: 'i,
     C: parser::Parser<'i, I, E>,
     S: Strategy<'i, I, C, E>,
-    F: Fn(Option<&I>, <E::Location as location::LocationTracker<I>>::Span) -> E,
+    F: Fn(Option<&I>, <E::Location as location::Tracker<I>>::Span) -> E,
     E: error::Error<'i, I>,
 {
     fn recover(
@@ -889,7 +889,7 @@ where
     I: 'i,
     C: parser::Parser<'i, I, E>,
     S: Strategy<'i, I, C, E>,
-    F: Fn(&mut Vec<E>, <E::Location as location::LocationTracker<I>>::Location) -> E,
+    F: Fn(&mut Vec<E>, <E::Location as location::Tracker<I>>::Location) -> E,
     E: error::Error<'i, I>,
 {
     fn recover(
@@ -920,7 +920,7 @@ where
     I: 'i,
     C: parser::Parser<'i, I, E>,
     S: Strategy<'i, I, C, E>,
-    F: Fn(&mut Vec<E>, Option<&I>, <E::Location as location::LocationTracker<I>>::Span) -> E,
+    F: Fn(&mut Vec<E>, Option<&I>, <E::Location as location::Tracker<I>>::Span) -> E,
     E: error::Error<'i, I>,
 {
     fn recover(
@@ -979,7 +979,7 @@ where
     I: 'i,
     C: parser::Parser<'i, I, E>,
     S: Strategy<'i, I, C, E>,
-    F: Fn(<E::Location as location::LocationTracker<I>>::Span) -> C::Output,
+    F: Fn(<E::Location as location::Tracker<I>>::Span) -> C::Output,
     E: error::Error<'i, I>,
 {
     fn recover(

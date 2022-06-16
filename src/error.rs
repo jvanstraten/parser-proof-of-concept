@@ -57,7 +57,7 @@ where
 {
     /// The location tracker used to provide location information for the
     /// error messages.
-    type Location: location::LocationTracker<I>;
+    type Location: location::Tracker<I>;
 
     /// Constructor for error messages stating that one of a number of tokens
     /// was expected but another was found. The span corresponds to the token
@@ -66,8 +66,8 @@ where
         expected: J,
         found: Option<&'i I>,
         at: At<
-            <Self::Location as location::LocationTracker<I>>::Location,
-            <Self::Location as location::LocationTracker<I>>::Span,
+            <Self::Location as location::Tracker<I>>::Location,
+            <Self::Location as location::Tracker<I>>::Span,
         >,
     ) -> Self
     where
@@ -83,47 +83,48 @@ where
     fn is_expected_found(&self) -> bool;
 
     /// Returns the location information associated with this error, if any.
+    #[allow(clippy::type_complexity)] // I agree, though.
     fn location(
         &self,
     ) -> At<
-        &<Self::Location as location::LocationTracker<I>>::Location,
-        &<Self::Location as location::LocationTracker<I>>::Span,
+        &<Self::Location as location::Tracker<I>>::Location,
+        &<Self::Location as location::Tracker<I>>::Span,
     >;
 
     /// Constructor for an unmatched left delimiter error.
     fn unmatched_left_delimiter(
         left_token: &'i I,
-        left_span: <Self::Location as location::LocationTracker<I>>::Span,
+        left_span: <Self::Location as location::Tracker<I>>::Span,
         close_before: At<
-            <Self::Location as location::LocationTracker<I>>::Location,
-            <Self::Location as location::LocationTracker<I>>::Span,
+            <Self::Location as location::Tracker<I>>::Location,
+            <Self::Location as location::Tracker<I>>::Span,
         >,
     ) -> Self;
 
     /// Constructor for an unmatched right delimiter error.
     fn unmatched_right_delimiter(
         right_token: &'i I,
-        right_span: <Self::Location as location::LocationTracker<I>>::Span,
+        right_span: <Self::Location as location::Tracker<I>>::Span,
         open_before: At<
-            <Self::Location as location::LocationTracker<I>>::Location,
-            <Self::Location as location::LocationTracker<I>>::Span,
+            <Self::Location as location::Tracker<I>>::Location,
+            <Self::Location as location::Tracker<I>>::Span,
         >,
     ) -> Self;
 
     /// Constructor for an unmatched delimiter type error.
     fn unmatched_delimiter_type(
         left_token: &'i I,
-        left_span: <Self::Location as location::LocationTracker<I>>::Span,
+        left_span: <Self::Location as location::Tracker<I>>::Span,
         right_token: &'i I,
-        right_span: <Self::Location as location::LocationTracker<I>>::Span,
+        right_span: <Self::Location as location::Tracker<I>>::Span,
     ) -> Self;
 
     /// Constructor for a custom message with a location.
     fn custom<M: ToString>(
         msg: M,
         at: At<
-            <Self::Location as location::LocationTracker<I>>::Location,
-            <Self::Location as location::LocationTracker<I>>::Span,
+            <Self::Location as location::Tracker<I>>::Location,
+            <Self::Location as location::Tracker<I>>::Span,
         >,
     ) -> Self;
 }
@@ -139,7 +140,7 @@ pub trait Fallback {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Simple<'i, I, L = location::Simple>
 where
-    L: location::LocationTracker<I>,
+    L: location::Tracker<I>,
     I: Eq + std::hash::Hash,
 {
     /// One of .0 was expected, but .1 was found at .2
@@ -165,7 +166,7 @@ where
 impl<'i, I, L> Error<'i, I> for Simple<'i, I, L>
 where
     I: 'i + Eq + std::hash::Hash,
-    L: location::LocationTracker<I>,
+    L: location::Tracker<I>,
 {
     type Location = L;
 
@@ -229,7 +230,7 @@ where
 
 impl<'i, I, L> Fallback for Simple<'i, I, L>
 where
-    L: location::LocationTracker<I>,
+    L: location::Tracker<I>,
     I: Eq + std::hash::Hash,
 {
     fn simple<M: ToString>(msg: M) -> Self {
@@ -239,7 +240,7 @@ where
 
 impl<'i, I, L> std::fmt::Display for Simple<'i, I, L>
 where
-    L: location::LocationTracker<I>,
+    L: location::Tracker<I>,
     I: std::fmt::Display + Eq + std::hash::Hash,
     L::Location: std::fmt::Display,
     L::Span: std::fmt::Display,

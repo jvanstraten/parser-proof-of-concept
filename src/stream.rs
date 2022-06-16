@@ -13,7 +13,7 @@ pub struct SavedState {
 pub struct Stream<'i, I, L>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
+    L: location::Tracker<I>,
 {
     /// Iterator representing the source of the tokens.
     source: Box<dyn Iterator<Item = &'i I> + 'i>,
@@ -45,7 +45,7 @@ where
 impl<'i, I, L> Stream<'i, I, L>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
+    L: location::Tracker<I>,
 {
     /// Constructs a token stream from an iterable, using the default start
     /// location.

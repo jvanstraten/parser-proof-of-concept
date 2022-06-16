@@ -5,7 +5,7 @@
 /// parser tracks on its own). Note however that it's cloned a lot, so if
 /// you want to track lots of immutable stuff (like a source filename),
 /// consider sticking it in an Rc. The default is simply empty.
-pub trait LocationTracker<I>: Clone {
+pub trait Tracker<I>: Clone {
     /// The type for a single location.
     type Location: PartialEq;
 
@@ -28,7 +28,7 @@ pub trait LocationTracker<I>: Clone {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Simple();
 
-impl<I> LocationTracker<I> for Simple {
+impl<I> Tracker<I> for Simple {
     type Location = usize;
     type Span = std::ops::Range<usize>;
 
@@ -85,7 +85,7 @@ impl<I, F: Fn(&I) -> &str> Rich<I, F> {
     }
 }
 
-impl<I, F: Fn(&I) -> &str> LocationTracker<I> for Rich<I, F> {
+impl<I, F: Fn(&I) -> &str> Tracker<I> for Rich<I, F> {
     type Location = RichLocation;
     type Span = RichSpan;
 

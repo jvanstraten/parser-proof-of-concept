@@ -125,7 +125,7 @@ impl<'i, I, C, F, O, E> parser::Parser<'i, I, E> for MapWithSpan<C, F>
 where
     I: 'i,
     C: parser::Parser<'i, I, E>,
-    F: Fn(C::Output, <E::Location as location::LocationTracker<I>>::Span) -> O,
+    F: Fn(C::Output, <E::Location as location::Tracker<I>>::Span) -> O,
     E: error::Error<'i, I>,
 {
     type Output = O;
@@ -182,7 +182,7 @@ where
     I: 'i,
     C: parser::Parser<'i, I, A>,
     A: error::Error<'i, I>,
-    F: Fn(A, <A::Location as location::LocationTracker<I>>::Span) -> E,
+    F: Fn(A, <A::Location as location::Tracker<I>>::Span) -> E,
     E: error::Error<'i, I, Location = A::Location>,
 {
     type Output = C::Output;
@@ -218,7 +218,7 @@ impl<'i, I, C, F, O, E> parser::Parser<'i, I, E> for TryMap<C, F>
 where
     I: 'i,
     C: parser::Parser<'i, I, E>,
-    F: Fn(C::Output, <E::Location as location::LocationTracker<I>>::Span) -> TryMapResult<O, E>, // TODO Into<TryMapResult<O, E>>, impl Result -> TryMapResult
+    F: Fn(C::Output, <E::Location as location::Tracker<I>>::Span) -> TryMapResult<O, E>, // TODO Into<TryMapResult<O, E>>, impl Result -> TryMapResult
     E: error::Error<'i, I>,
 {
     type Output = O;
@@ -594,13 +594,13 @@ impl<A, B> Repeated<A, B> {
 /// See [parser::Parser::separated_by()].
 pub type SeparatedBy<A, B> = Repeated<A, B>;
 
-/// See [parser::Parser::recover_with()].
-pub struct RecoverWith<C, S> {
+/// See [parser::Parser::to_recover()].
+pub struct ToRecover<C, S> {
     pub(crate) parser: C,
     pub(crate) strategy: S,
 }
 
-impl<'i, I, C, S, E> parser::Parser<'i, I, E> for RecoverWith<C, S>
+impl<'i, I, C, S, E> parser::Parser<'i, I, E> for ToRecover<C, S>
 where
     I: 'i,
     C: parser::Parser<'i, I, E>,

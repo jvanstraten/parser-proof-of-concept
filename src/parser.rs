@@ -310,7 +310,7 @@ where
     /// tokens that it matched to a different type using the given function.
     fn map_with_span<O, F>(self, map: F) -> combinator::MapWithSpan<Self, F>
     where
-        F: Fn(Self::Output, <E::Location as location::LocationTracker<I>>::Span) -> O,
+        F: Fn(Self::Output, <E::Location as location::Tracker<I>>::Span) -> O,
         Self: Sized,
     {
         combinator::MapWithSpan { child: self, map }
@@ -335,7 +335,7 @@ where
     /// tokens that it matched to a different type using the given function.
     fn map_err_with_span<X, F>(self, map: F) -> combinator::MapErrWithSpan<Self, F, E>
     where
-        F: Fn(E, <E::Location as location::LocationTracker<I>>::Span) -> X,
+        F: Fn(E, <E::Location as location::Tracker<I>>::Span) -> X,
         X: error::Error<'i, I>,
         Self: Sized,
     {
@@ -360,7 +360,7 @@ where
     where
         F: Fn(
             Self::Output,
-            <E::Location as location::LocationTracker<I>>::Span,
+            <E::Location as location::Tracker<I>>::Span,
         ) -> combinator::TryMapResult<O, E>,
         Self: Sized,
     {
@@ -516,12 +516,12 @@ where
     }
 
     /// If the parser fails, attempt to recover using the given strategy.
-    fn recover_with<S>(self, strategy: S) -> combinator::RecoverWith<Self, S>
+    fn to_recover<S>(self, strategy: S) -> combinator::ToRecover<Self, S>
     where
         Self: Sized,
         S: recovery::Strategy<'i, I, Self, E>,
     {
-        combinator::RecoverWith {
+        combinator::ToRecover {
             parser: self,
             strategy,
         }
@@ -573,7 +573,7 @@ where
 pub struct Tail<'i, I, L>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
+    L: location::Tracker<I>,
 {
     input: stream::Stream<'i, I, L>,
 }
@@ -581,7 +581,7 @@ where
 impl<'i, I, L> Iterator for Tail<'i, I, L>
 where
     I: 'i,
-    L: location::LocationTracker<I>,
+    L: location::Tracker<I>,
 {
     type Item = &'i I;
 
