@@ -14,13 +14,12 @@ pub enum Result<O, E> {
     Success(O),
 
     /// Parsing failed, but recovery was enabled and this succeeded, yielding
-    /// recovered output and a nonempty list of errors.
+    /// recovered output and a list of errors.
     Recovered(O, Vec<E>),
 
     /// Parsing failed, and recovery was either disabled or also failed,
     /// yielding the index of the last token that was parsed successfully
-    /// (may also simply be 0 if nothing matched), and a nonempty list of
-    /// errors.
+    /// (may also simply be 0 if nothing matched), and a list of errors.
     Failed(usize, Vec<E>),
 }
 
@@ -522,14 +521,12 @@ pub trait Parser<'i, I: 'i> {
     }
 
     /// If the parser fails, attempt to recover using the given strategy.
-    fn to_recover<S>(self, strategy: S) -> combinator::ToRecover<Self, S>
+    fn to_recover(self) -> recovery::ToRecover<Self>
     where
         Self: Sized,
-        S: recovery::Strategy<'i, I, Self>,
     {
-        combinator::ToRecover {
-            parser: self,
-            strategy,
+        recovery::ToRecover {
+            child: self,
         }
     }
 }

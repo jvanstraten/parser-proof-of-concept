@@ -5,7 +5,6 @@ use super::error;
 use super::location;
 use super::parser;
 use super::primitive;
-use super::recovery;
 use super::stream;
 use std::rc::Rc;
 
@@ -627,59 +626,6 @@ impl<A, B> SeparatedBy<A, B> {
 
 /// See [parser::Parser::repeated()].
 pub type Repeated<A> = SeparatedBy<A, A>;
-
-/// See [parser::Parser::to_recover()].
-pub struct ToRecover<C, S> {
-    pub(crate) parser: C,
-    pub(crate) strategy: S,
-}
-
-impl<'i, I, C, S> parser::Parser<'i, I> for ToRecover<C, S>
-where
-    I: 'i,
-    C: parser::Parser<'i, I>,
-    S: recovery::Strategy<'i, I, C>,
-{
-    type Output = C::Output;
-    type Error = C::Error;
-
-    fn parse_internal(
-        &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
-        enable_recovery: bool,
-    ) -> parser::Result<Self::Output, Self::Error> {
-        match self.parser.parse_internal(stream, enable_recovery) {
-            parser::Result::Failed(last_token_matched, mut errors) => {
-                if !enable_recovery {
-                    // Recovery disabled, don't run recovery strategy.
-                    parser::Result::Failed(last_token_matched, errors)
-                } else {
-                    let started_at = stream.save();
-                    let mut failed_at = stream.save_at(last_token_matched);
-                    let recovery = recovery::Strategy::recover(
-                        &self.strategy,
-                        &self.parser,
-                        stream,
-                        &started_at,
-                        &mut failed_at,
-                        &mut errors,
-                    );
-                    if let Some(output) = recovery {
-                        // Recovery successful.
-                        parser::Result::Recovered(output, errors)
-                    } else {
-                        // Recovery failed, but note that `errors` may have been
-                        // modified by the recovery strategy.
-                        parser::Result::Failed(last_token_matched, errors)
-                    }
-                }
-            }
-            // Don't run recovery if the parser was successful (obviously) or
-            // if a previous recovery strategy was already successful.
-            r => r,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
