@@ -11,6 +11,14 @@ pub struct Empty<E> {
     phantom: std::marker::PhantomData<E>,
 }
 
+impl<E> Clone for Empty<E> {
+    fn clone(&self) -> Self {
+        Self {
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, H, I, E> parser::Parser<'i, H, I> for Empty<E>
 where
     H: Borrow<I> + Clone + 'i,
@@ -39,6 +47,14 @@ pub fn empty<E>() -> Empty<E> {
 /// See [none()].
 pub struct None<O, E> {
     phantom: std::marker::PhantomData<(O, E)>,
+}
+
+impl<O, E> Clone for None<O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for None<O, E>
@@ -70,6 +86,14 @@ pub fn none<O, E>() -> None<O, E> {
 /// See [end()].
 pub struct End<E> {
     phantom: std::marker::PhantomData<E>,
+}
+
+impl<E> Clone for End<E> {
+    fn clone(&self) -> Self {
+        Self {
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, H, I, E> parser::Parser<'i, H, I> for End<E>
@@ -116,6 +140,19 @@ where
 {
     expected: H,
     phantom: std::marker::PhantomData<(&'i I, E)>,
+}
+
+impl<'i, H, I, E> Clone for Just<'i, H, I, E>
+where
+    H: Borrow<I> + Clone + 'i,
+    I: 'i + PartialEq,
+{
+    fn clone(&self) -> Self {
+        Self {
+            expected: self.expected.clone(),
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, H, I, E> parser::Parser<'i, H, I> for Just<'i, H, I, E>
@@ -172,6 +209,15 @@ pub struct Filter<F, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
+impl<F: Clone, E> Clone for Filter<F, E> {
+    fn clone(&self) -> Self {
+        Self {
+            filter: self.filter.clone(),
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, H, I, F, E> parser::Parser<'i, H, I> for Filter<F, E>
 where
     H: Borrow<I> + Clone + 'i,
@@ -225,6 +271,15 @@ pub struct FilterMap<F, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
+impl<F: Clone, E> Clone for FilterMap<F, E> {
+    fn clone(&self) -> Self {
+        Self {
+            filter: self.filter.clone(),
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, H, I, F, O, E> parser::Parser<'i, H, I> for FilterMap<F, E>
 where
     H: Borrow<I> + Clone + 'i,
@@ -274,6 +329,15 @@ where
 pub struct Seq<'i, O, E> {
     expected: &'i O,
     phantom: std::marker::PhantomData<E>,
+}
+
+impl<'i, O, E> Clone for Seq<'i, O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            expected: self.expected,
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Seq<'i, O, E>
@@ -343,6 +407,15 @@ pub struct OneOf<'i, G, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
+impl<'i, G, E> Clone for OneOf<'i, G, E> {
+    fn clone(&self) -> Self {
+        Self {
+            expected: self.expected,
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, G, H, I, E> parser::Parser<'i, H, I> for OneOf<'i, G, E>
 where
     &'i G: IntoIterator<Item = H> + 'i,
@@ -400,6 +473,15 @@ where
 pub struct NoneOf<'i, G, E> {
     rejected: &'i G,
     phantom: std::marker::PhantomData<E>,
+}
+
+impl<'i, G, E> Clone for NoneOf<'i, G, E> {
+    fn clone(&self) -> Self {
+        Self {
+            rejected: self.rejected,
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, G, H, I, E> parser::Parser<'i, H, I> for NoneOf<'i, G, E>
@@ -472,7 +554,7 @@ mod tests {
 
     #[test]
     fn test_empty() {
-        let parser = empty::<SimpleError<_, char>>();
+        let parser = empty::<SimpleError<_, char>>().clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(())));
         assert_eq!(
@@ -483,7 +565,7 @@ mod tests {
 
     #[test]
     fn test_none() {
-        let parser = none::<usize, SimpleError<_, char>>();
+        let parser = none::<usize, SimpleError<_, char>>().clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(None)));
         assert_eq!(
@@ -494,7 +576,7 @@ mod tests {
 
     #[test]
     fn test_end() {
-        let parser = end::<SimpleError<_, char>>();
+        let parser = end::<SimpleError<_, char>>().clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
         assert_eq!(
@@ -506,7 +588,7 @@ mod tests {
 
     #[test]
     fn test_just() {
-        let parser = just(&'a').with_error::<SimpleError<_, char>>();
+        let parser = just(&'a').with_error::<SimpleError<_, char>>().clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -522,7 +604,9 @@ mod tests {
 
     #[test]
     fn test_filter() {
-        let parser = filter(|x| *x == 'a').with_error::<SimpleError<_, char>>();
+        let parser = filter(|x| *x == 'a')
+            .with_error::<SimpleError<_, char>>()
+            .clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -539,7 +623,8 @@ mod tests {
     #[test]
     fn test_filter_map() {
         let parser = filter_map(|x| if *x == 'a' { Some('A') } else { None })
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success('A'))));
@@ -555,7 +640,9 @@ mod tests {
 
     #[test]
     fn test_seq() {
-        let parser = seq::<_, &char, _, _>(&['a', 'b']).with_error::<SimpleError<_, char>>();
+        let parser = seq::<_, &char, _, _>(&['a', 'b'])
+            .with_error::<SimpleError<_, char>>()
+            .clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(
@@ -581,7 +668,9 @@ mod tests {
 
     #[test]
     fn test_one_of() {
-        let parser = one_of::<_, _, &char, _>(&['a', 'b']).with_error::<SimpleError<_, char>>();
+        let parser = one_of::<_, _, &char, _>(&['a', 'b'])
+            .with_error::<SimpleError<_, char>>()
+            .clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -601,7 +690,9 @@ mod tests {
 
     #[test]
     fn test_none_of() {
-        let parser = none_of::<_, _, &char, _>(&['a', 'b']).with_error::<SimpleError<_, char>>();
+        let parser = none_of::<_, _, &char, _>(&['a', 'b'])
+            .with_error::<SimpleError<_, char>>()
+            .clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));

@@ -12,6 +12,14 @@ pub struct Recursive<'i, H, I, O, E> {
     inner: Rc<RefCell<Option<combinator::Boxed<'i, H, I, O, E>>>>,
 }
 
+impl<'i, H, I, O, E> Clone for Recursive<'i, H, I, O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
 impl<'i, H, I, O, E> Recursive<'i, H, I, O, E>
 where
     H: Borrow<I> + Clone + 'i,

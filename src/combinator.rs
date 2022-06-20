@@ -47,6 +47,15 @@ pub struct WithError<C, E> {
     pub(crate) phantom: std::marker::PhantomData<E>,
 }
 
+impl<C: Clone, E> Clone for WithError<C, E> {
+    fn clone(&self) -> Self {
+        Self {
+            child: self.child.clone(),
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, H, I, C> parser::Parser<'i, H, I> for WithError<C, C::Error>
 where
     H: Borrow<I> + Clone + 'i,
@@ -71,6 +80,7 @@ where
 }
 
 /// See [parser::Parser::to()].
+#[derive(Clone)]
 pub struct To<C, O> {
     pub(crate) child: C,
     pub(crate) to: O,
@@ -106,6 +116,7 @@ where
 pub type Ignored<C> = To<C, ()>;
 
 /// See [parser::Parser::some()].
+#[derive(Clone)]
 pub struct Some<C> {
     pub(crate) child: C,
 }
@@ -134,6 +145,7 @@ where
 }
 
 /// See [parser::Parser::map()].
+#[derive(Clone)]
 pub struct Map<C, F> {
     pub(crate) child: C,
     pub(crate) map: F,
@@ -166,6 +178,7 @@ where
 }
 
 /// See [parser::Parser::map_with_span()].
+#[derive(Clone)]
 pub struct MapWithSpan<C, F> {
     pub(crate) child: C,
     pub(crate) map: F,
@@ -202,6 +215,7 @@ where
 }
 
 /// See [parser::Parser::map_err()].
+#[derive(Clone)]
 pub struct MapErr<C, F> {
     pub(crate) child: C,
     pub(crate) map: F,
@@ -240,6 +254,7 @@ where
 }
 
 /// See [parser::Parser::map_err_with_span()].
+#[derive(Clone)]
 pub struct MapErrWithSpan<C, F> {
     pub(crate) child: C,
     pub(crate) map: F,
@@ -284,6 +299,7 @@ where
 /// Special result type to be returned by the function passed to
 /// [parser::Parser::try_map()], which, in addition to Ok and Err,
 /// has a variant for recoverable errors.
+#[derive(Clone)]
 pub enum TryMapResult<O, E> {
     Ok(O),
     Err(Vec<E>),
@@ -342,6 +358,7 @@ where
 }
 
 /// See [parser::Parser::then()].
+#[derive(Clone)]
 pub struct Then<A, B> {
     pub(crate) a: A,
     pub(crate) b: B,
@@ -372,6 +389,7 @@ where
 }
 
 /// See [parser::Parser::then_ignore()].
+#[derive(Clone)]
 pub struct ThenIgnore<A, B> {
     pub(crate) a: A,
     pub(crate) b: B,
@@ -402,6 +420,7 @@ where
 }
 
 /// See [parser::Parser::ignore_then()].
+#[derive(Clone)]
 pub struct IgnoreThen<A, B> {
     pub(crate) a: A,
     pub(crate) b: B,
@@ -432,6 +451,7 @@ where
 }
 
 /// See [parser::Parser::delimited_by()].
+#[derive(Clone)]
 pub struct DelimitedBy<A, B, C> {
     pub(crate) left: A,
     pub(crate) middle: B,
@@ -471,6 +491,7 @@ where
 }
 
 /// See [parser::Parser::padded_by()].
+#[derive(Clone)]
 pub struct PaddedBy<A, B> {
     pub(crate) padding: A,
     pub(crate) middle: B,
@@ -510,6 +531,14 @@ where
 /// See [parser::Parser::chain()].
 pub struct Chain<'i, H, I, O, E> {
     pub(crate) parsers: Vec<Boxed<'i, H, I, O, E>>,
+}
+
+impl<'i, H, I, O, E> Clone for Chain<'i, H, I, O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            parsers: self.parsers.clone(),
+        }
+    }
 }
 
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Chain<'i, H, I, O, E>
@@ -554,6 +583,7 @@ where
 }
 
 /// See [parser::Parser::or()].
+#[derive(Clone)]
 pub struct Or<A, B> {
     pub(crate) a: A,
     pub(crate) b: B,
@@ -584,6 +614,7 @@ where
 }
 
 /// See [parser::Parser::or_not()].
+#[derive(Clone)]
 pub struct OrNot<C> {
     pub(crate) child: Some<C>,
 }
@@ -619,6 +650,14 @@ where
 /// See [parser::Parser::alters()].
 pub struct Alters<'i, H, I, O, E> {
     pub(crate) parsers: Vec<Boxed<'i, H, I, O, E>>,
+}
+
+impl<'i, H, I, O, E> Clone for Alters<'i, H, I, O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            parsers: self.parsers.clone(),
+        }
+    }
 }
 
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Alters<'i, H, I, O, E>
@@ -663,6 +702,7 @@ where
 }
 
 /// See [parser::Parser::separated_by()].
+#[derive(Clone)]
 pub struct SeparatedBy<A, B> {
     pub(crate) minimum: usize,
     pub(crate) maximum: Option<usize>,
@@ -751,6 +791,7 @@ impl<A, B> SeparatedBy<A, B> {
 pub type Repeated<A> = SeparatedBy<A, A>;
 
 /// See [parser::Parser::to_recover()].
+#[derive(Clone)]
 pub struct ToRecover<C, S> {
     pub(crate) parser: C,
     pub(crate) strategy: S,
@@ -816,7 +857,10 @@ mod tests {
 
     #[test]
     fn test_boxed() {
-        let parser = just(&'a').boxed().with_error::<SimpleError<_, char>>();
+        let parser = just(&'a')
+            .boxed()
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -824,7 +868,10 @@ mod tests {
 
     #[test]
     fn test_to() {
-        let parser = just(&'a').to(42usize).with_error::<SimpleError<_, char>>();
+        let parser = just(&'a')
+            .to(42usize)
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(42usize)));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -834,7 +881,8 @@ mod tests {
     fn test_map() {
         let parser = just(&'a')
             .map(|x| x.to_ascii_uppercase())
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success('A')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -844,7 +892,8 @@ mod tests {
     fn test_map_with_span() {
         let parser = just(&'a')
             .map_with_span(|x, s| (x.to_ascii_uppercase(), s))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(('A', 0..1))));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -856,7 +905,8 @@ mod tests {
     fn test_then() {
         let parser = just(&'a')
             .then(just(&'b'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success((&'a', &'b'))));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
@@ -880,7 +930,8 @@ mod tests {
     fn test_then_ignore() {
         let parser = just(&'a')
             .then_ignore(just(&'b'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
@@ -904,7 +955,8 @@ mod tests {
     fn test_ignore_then() {
         let parser = just(&'a')
             .ignore_then(just(&'b'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'b')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
@@ -928,7 +980,8 @@ mod tests {
     fn test_padded_by() {
         let parser = just(&'a')
             .padded_by(just(&'b'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['b', 'a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
@@ -952,7 +1005,8 @@ mod tests {
     fn test_delimited_by() {
         let parser = just(&'b')
             .delimited_by(just(&'a'), just(&'c'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c', 'd']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'b')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['d']);
@@ -977,7 +1031,8 @@ mod tests {
         let parser = just(&'a')
             .chain(just(&'b'))
             .and(just(&'c'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c', 'd']);
         assert_eq!(
             stream.next(),
@@ -1004,7 +1059,8 @@ mod tests {
     fn test_or() {
         let parser = just(&'a')
             .or(just(&'b'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1026,7 +1082,8 @@ mod tests {
         let parser = just(&'a')
             .alters(just(&'b'))
             .and(just(&'c'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1049,7 +1106,10 @@ mod tests {
 
     #[test]
     fn test_or_not() {
-        let parser = just(&'a').or_not().with_error::<SimpleError<_, char>>();
+        let parser = just(&'a')
+            .or_not()
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(Some(&'a'))));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1064,7 +1124,10 @@ mod tests {
 
     #[test]
     fn test_repeated_any() {
-        let parser = just(&'a').repeated().with_error::<SimpleError<_, char>>();
+        let parser = just(&'a')
+            .repeated()
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1093,7 +1156,8 @@ mod tests {
         let parser = just(&'a')
             .repeated()
             .at_least(1)
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1122,7 +1186,8 @@ mod tests {
         let parser = just(&'a')
             .repeated()
             .at_most(2)
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1147,7 +1212,8 @@ mod tests {
     fn test_separated_by() {
         let parser = just(&'a')
             .separated_by(just(&','))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', ',', 'b', ',', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
         assert_eq!(
@@ -1184,7 +1250,8 @@ mod tests {
         let parser = just(&'a')
             .separated_by(just(&','))
             .allow_leading()
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', ',', 'b', ',', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
         assert_eq!(
@@ -1221,7 +1288,8 @@ mod tests {
         let parser = just(&'a')
             .separated_by(just(&','))
             .allow_trailing()
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', ',', 'b', ',', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
         assert_eq!(

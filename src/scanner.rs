@@ -40,6 +40,16 @@ pub struct NestedDelimiters<'i, H, I, S> {
     phantom: std::marker::PhantomData<I>,
 }
 
+impl<'i, H: Clone, I, S: Clone> Clone for NestedDelimiters<'i, H, I, S> {
+    fn clone(&self) -> Self {
+        Self {
+            types: self.types,
+            stack: self.stack.clone(),
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, H, I, S> NestedDelimiters<'i, H, I, S>
 where
     H: Borrow<I> + Clone + 'i,
@@ -180,7 +190,7 @@ where
 /// delimiter.
 pub fn nested_delimiters<'i, H, I, S>(
     types: &'i [(H, H)],
-) -> impl Fn() -> NestedDelimiters<'i, H, I, S>
+) -> impl Fn() -> NestedDelimiters<'i, H, I, S> + Clone
 where
     I: PartialEq,
 {

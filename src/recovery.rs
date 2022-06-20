@@ -356,7 +356,7 @@ where
         Self: Sized + 'i,
     {
         Boxed {
-            strategy: Box::new(self),
+            strategy: std::rc::Rc::new(self),
         }
     }
 
@@ -435,6 +435,14 @@ pub struct AttemptTo<H, I, C> {
     phantom: PhantomData<(H, I, C)>,
 }
 
+impl<H, I, C> Clone for AttemptTo<H, I, C> {
+    fn clone(&self) -> Self {
+        Self {
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, H, I, C> Recover<'i, H, I, C> for AttemptTo<H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
@@ -496,6 +504,7 @@ where
 }
 
 /// See [IncompleteStrategy::restart()].
+#[derive(Clone)]
 pub struct Restart<S> {
     child: S,
 }
@@ -539,6 +548,7 @@ where
 }
 
 /// See [IncompleteStrategy::seek_to_failed()].
+#[derive(Clone)]
 pub struct SeekToFailed<S> {
     child: S,
 }
@@ -592,6 +602,7 @@ where
 }
 
 /// See [IncompleteStrategy::skip()].
+#[derive(Clone)]
 pub struct Skip<S> {
     child: S,
 }
@@ -645,6 +656,7 @@ where
 }
 
 /// See [IncompleteStrategy::skip_if()].
+#[derive(Clone)]
 pub struct SkipIf<S, F> {
     child: S,
     predicate: F,
@@ -708,6 +720,7 @@ where
 }
 
 /// See [IncompleteStrategy::find()].
+#[derive(Clone)]
 pub struct Find<S, F> {
     child: S,
     predicate: F,
@@ -771,6 +784,7 @@ where
 }
 
 /// See [IncompleteStrategy::scan()].
+#[derive(Clone)]
 pub struct Scan<S, F> {
     child: S,
     factory: F,
@@ -840,6 +854,7 @@ where
 }
 
 /// See [IncompleteStrategy::maybe()].
+#[derive(Clone)]
 pub struct Maybe<S, T> {
     child: S,
     inner: T,
@@ -904,6 +919,7 @@ where
 }
 
 /// See [IncompleteStrategy::while_not()].
+#[derive(Clone)]
 pub struct WhileNot<S, F, T> {
     child: S,
     predicate: F,
@@ -977,6 +993,7 @@ where
 }
 
 /// See [IncompleteStrategy::retry()].
+#[derive(Clone)]
 pub struct Retry<S> {
     child: S,
     exact: bool,
@@ -1066,6 +1083,7 @@ where
 }
 
 /// See [IncompleteStrategy::try_to_parse()].
+#[derive(Clone)]
 pub struct TryToParse<S, T> {
     child: S,
     parser: T,
@@ -1159,6 +1177,7 @@ where
 }
 
 /// See [IncompleteStrategy::push_error()].
+#[derive(Clone)]
 pub struct PushError<S, F> {
     child: S,
     factory: F,
@@ -1216,6 +1235,7 @@ where
 }
 
 /// See [IncompleteStrategy::push_error_here()].
+#[derive(Clone)]
 pub struct PushErrorHere<S, F> {
     child: S,
     factory: F,
@@ -1279,6 +1299,7 @@ where
 }
 
 /// See [IncompleteStrategy::push_error_up_to_here()].
+#[derive(Clone)]
 pub struct PushErrorUpToHere<S, F> {
     child: S,
     factory: F,
@@ -1342,6 +1363,7 @@ where
 }
 
 /// See [IncompleteStrategy::push_error_for_token()].
+#[derive(Clone)]
 pub struct PushErrorForToken<S, F> {
     child: S,
     factory: F,
@@ -1408,6 +1430,7 @@ where
 }
 
 /// See [IncompleteStrategy::update_errors()].
+#[derive(Clone)]
 pub struct UpdateErrors<S, F> {
     child: S,
     updater: F,
@@ -1465,6 +1488,7 @@ where
 }
 
 /// See [IncompleteStrategy::update_errors_here()].
+#[derive(Clone)]
 pub struct UpdateErrorsHere<S, F> {
     child: S,
     updater: F,
@@ -1531,6 +1555,7 @@ where
 }
 
 /// See [IncompleteStrategy::update_errors_up_to_here()].
+#[derive(Clone)]
 pub struct UpdateErrorsUpToHere<S, F> {
     child: S,
     updater: F,
@@ -1599,6 +1624,7 @@ where
 }
 
 /// See [IncompleteStrategy::update_errors_for_token()].
+#[derive(Clone)]
 pub struct UpdateErrorsForToken<S, F> {
     child: S,
     updater: F,
@@ -1676,7 +1702,20 @@ where
     I: 'i,
     C: parser::Parser<'i, H, I>,
 {
-    pub(crate) strategy: Box<dyn IncompleteStrategy<'i, H, I, C> + 'i>,
+    pub(crate) strategy: std::rc::Rc<dyn IncompleteStrategy<'i, H, I, C> + 'i>,
+}
+
+impl<'i, H, I, C> Clone for Boxed<'i, H, I, C>
+where
+    H: Borrow<I> + Clone + 'i,
+    I: 'i,
+    C: parser::Parser<'i, H, I>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            strategy: self.strategy.clone(),
+        }
+    }
 }
 
 impl<'i, H, I, C> Recover<'i, H, I, C> for Boxed<'i, H, I, C>
@@ -1712,6 +1751,7 @@ where
 }
 
 /// See [IncompleteStrategy::and_return()].
+#[derive(Clone)]
 pub struct Return<S, O> {
     child: S,
     output: O,
@@ -1766,6 +1806,7 @@ where
 }
 
 /// See [IncompleteStrategy::and_return_with()].
+#[derive(Clone)]
 pub struct ReturnWith<S, F> {
     child: S,
     output: F,
@@ -1820,6 +1861,7 @@ where
 }
 
 /// See [IncompleteStrategy::and_return_with_span()].
+#[derive(Clone)]
 pub struct ReturnWithSpan<S, F> {
     child: S,
     output: F,
@@ -1880,6 +1922,7 @@ where
 }
 
 /// See [IncompleteStrategy::or_fail()].
+#[derive(Clone)]
 pub struct OrFail<S> {
     child: S,
 }
@@ -1926,7 +1969,8 @@ mod tests {
     fn test_always_fail() {
         let parser = just(&'a')
             .to_recover(attempt_to().do_nothing().or_fail())
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1943,7 +1987,8 @@ mod tests {
     fn test_just_return() {
         let parser = just(&'a')
             .to_recover(just_return(&'a'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1963,7 +2008,8 @@ mod tests {
     fn test_just_return_with() {
         let parser = just(&'a')
             .to_recover(just_return_with(|| &'a'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1986,7 +2032,8 @@ mod tests {
                 assert_eq!(span, 0..0);
                 &'a'
             }))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -2009,7 +2056,8 @@ mod tests {
                 assert_eq!(span, 0..1);
                 &'a'
             }))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -2025,7 +2073,8 @@ mod tests {
                 assert_eq!(span, 0..0);
                 &'a'
             }))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -2045,7 +2094,8 @@ mod tests {
                 assert_eq!(span, 0..1);
                 (&'a', &'b')
             }))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['a', 'c', 'b']);
         assert!(matches!(
             stream.next(),
@@ -2058,7 +2108,8 @@ mod tests {
     fn test_skip_if() {
         let parser = just(&'a')
             .to_recover(skip_if(|t| t == &'c').and_return(&'a'))
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -2081,7 +2132,8 @@ mod tests {
     fn test_find_retry() {
         let parser = just(&'a')
             .to_recover(find(|t| t == &'a').retry().or_fail())
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -2101,7 +2153,8 @@ mod tests {
     fn test_while_not_retry() {
         let parser = just(&'a')
             .to_recover(while_not(|t| t == &'x', retry()).or_fail())
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -2128,15 +2181,12 @@ mod tests {
     fn test_nested_delimiters() {
         let parser = just(&'a')
             .to_recover(
-                scan(nested_delimiters(&[
-                    (&'(', &')'),
-                    (&'|', &'|'),
-                    (&'[', &']'),
-                ]))
-                .skip()
-                .and_return(&'a'),
+                scan(nested_delimiters(&[(&'(', &')'), (&'|', &'|'), (&'[', &']')]).clone())
+                    .skip()
+                    .and_return(&'a'),
             )
-            .with_error::<SimpleError<_, char>>();
+            .with_error::<SimpleError<_, char>>()
+            .clone();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
