@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::borrow::Borrow;
+
 use super::combinator;
 use super::error;
 use super::parser;
@@ -73,17 +75,18 @@ macro_rules! concatenate {
 
 // Concatenate a set of boxed parsers that all return the same type into
 // a vector.
-pub fn concatenate<'i, 'p, I, C, O, E>(
-    stream: &mut crate::stream::Stream<'i, I, E::LocationTracker>,
+pub fn concatenate<'i, 'p, H, I, C, O, E>(
+    stream: &mut crate::stream::Stream<'i, H, I, E::LocationTracker>,
     enable_recovery: bool,
     parsers: C,
 ) -> parser::Result<Vec<O>, E>
 where
     'i: 'p,
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: IntoIterator<Item = &'p combinator::Boxed<'i, I, O, E>>,
+    C: IntoIterator<Item = &'p combinator::Boxed<'i, H, I, O, E>>,
     O: 'i,
-    E: error::Error<'i, I> + 'p,
+    E: error::Error<'i, H, I> + 'p,
 {
     let mut parsers = parsers.into_iter();
 
@@ -151,8 +154,13 @@ where
 
 // Parse using the same parser a configurable number of times.
 #[allow(clippy::too_many_arguments)]
-pub fn repeat<'i, 'p, I, C, S>(
-    stream: &mut crate::stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+pub fn repeat<'i, 'p, H, I, C, S>(
+    stream: &mut crate::stream::Stream<
+        'i,
+        H,
+        I,
+        <C::Error as error::Error<'i, H, I>>::LocationTracker,
+    >,
     enable_recovery: bool,
     minimum: usize,
     maximum: Option<usize>,
@@ -163,9 +171,10 @@ pub fn repeat<'i, 'p, I, C, S>(
 ) -> parser::Result<Vec<C::Output>, C::Error>
 where
     'i: 'p,
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: parser::Parser<'i, I, Error = C::Error>,
+    C: parser::Parser<'i, H, I>,
+    S: parser::Parser<'i, H, I, Error = C::Error>,
 {
     let max = maximum.unwrap_or(usize::MAX);
 
@@ -368,17 +377,18 @@ macro_rules! alternate {
 
 // Alternate between a set of boxed parsers (at least one) that all return the
 // same type.
-pub fn alternate<'i, 'p, I, C, O, E>(
-    stream: &mut crate::stream::Stream<'i, I, E::LocationTracker>,
+pub fn alternate<'i, 'p, H, I, C, O, E>(
+    stream: &mut crate::stream::Stream<'i, H, I, E::LocationTracker>,
     enable_recovery: bool,
     parsers: C,
 ) -> parser::Result<O, E>
 where
     'i: 'p,
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: IntoIterator<Item = &'p combinator::Boxed<'i, I, O, E>>,
+    C: IntoIterator<Item = &'p combinator::Boxed<'i, H, I, O, E>>,
     O: 'i,
-    E: error::Error<'i, I> + 'p,
+    E: error::Error<'i, H, I> + 'p,
 {
     let parsers = parsers.into_iter();
 

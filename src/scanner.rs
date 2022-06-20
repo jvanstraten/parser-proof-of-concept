@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::borrow::Borrow;
+
 use super::error;
 use super::location;
 
 /// Trait used to implement the [Strategy::scan()] recovery strategy.
-pub trait Scanner<'i, I, E = error::Simple<'i, I>>
+pub trait Scanner<'i, H, I, E = error::Simple<H, I>>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
     /// Called by [Strategy::scan()] recovery strategy for each token
     /// encountered on the input until this returns true. The given span is
@@ -15,7 +18,7 @@ where
     /// manipulated as needed.
     fn scan(
         &mut self,
-        token: &'i I,
+        token: H,
         span: <E::LocationTracker as location::Tracker<I>>::Span,
         errors: &mut Vec<E>,
     ) -> bool;
@@ -31,26 +34,28 @@ where
 }
 
 /// See [nested_delimiters()].
-pub struct NestedDelimiters<'i, I, S> {
-    types: &'i [(I, I)],
-    stack: Vec<(usize, &'i I, S)>,
+pub struct NestedDelimiters<'i, H, I, S> {
+    types: &'i [(H, H)],
+    stack: Vec<(usize, H, S)>,
+    phantom: std::marker::PhantomData<I>,
 }
 
-impl<'i, I, S> NestedDelimiters<'i, I, S>
+impl<'i, H, I, S> NestedDelimiters<'i, H, I, S>
 where
-    I: PartialEq,
+    H: Borrow<I> + Clone + 'i,
+    I: PartialEq + 'i,
     S: Clone,
 {
-    fn handle_token<E, L>(&mut self, token: &'i I, span: S, errors: &mut Vec<E>)
+    fn handle_token<E, L>(&mut self, token: H, span: S, errors: &mut Vec<E>)
     where
-        E: error::Error<'i, I, LocationTracker = L>,
+        E: error::Error<'i, H, I, LocationTracker = L>,
         L: location::Tracker<I, Span = S>,
     {
         // Try matching the right delimiter for the top of the stack first.
         // This handles the left = right delimiter case (like || for lambdas
         // in Rust, for example).
         if let Some((index, _, _)) = self.stack.last() {
-            if token == &self.types[*index].1 {
+            if token.borrow() == self.types[*index].1.borrow() {
                 self.stack.pop();
                 return;
             }
@@ -58,7 +63,7 @@ where
 
         // See if this is a left delimiter.
         for (index, (left, _)) in self.types.iter().enumerate() {
-            if token == left {
+            if token.borrow() == left.borrow() {
                 self.stack.push((index, token, span));
                 return;
             }
@@ -68,7 +73,7 @@ where
         // have the *correct* right delimiter, so if this matches something is
         // wrong.
         for (right_index, (_, right)) in self.types.iter().enumerate() {
-            if token == right {
+            if token.borrow() == right.borrow() {
                 // Now we have a decision problem. We can
                 //  1) if there is a delimiter on our stack, treat this right
                 //     delimiter as an incorrect delimiter for that one (pop
@@ -129,17 +134,18 @@ where
     }
 }
 
-impl<'i, I, E> Scanner<'i, I, E>
-    for NestedDelimiters<'i, I, <E::LocationTracker as location::Tracker<I>>::Span>
+impl<'i, H, I, E> Scanner<'i, H, I, E>
+    for NestedDelimiters<'i, H, I, <E::LocationTracker as location::Tracker<I>>::Span>
 where
+    H: Borrow<I> + Clone + 'i,
     I: PartialEq,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
     <E::LocationTracker as location::Tracker<I>>::Location: Clone,
     <E::LocationTracker as location::Tracker<I>>::Span: Clone,
 {
     fn scan(
         &mut self,
-        token: &'i I,
+        token: H,
         span: <E::LocationTracker as location::Tracker<I>>::Span,
         errors: &mut Vec<E>,
     ) -> bool {
@@ -172,12 +178,15 @@ where
 /// prefix this with [Strategy::find()] to find the expected left delimiter
 /// first, and suffix this with [Strategy::skip()] to skip past the right
 /// delimiter.
-pub fn nested_delimiters<'i, I, S>(types: &'i [(I, I)]) -> impl Fn() -> NestedDelimiters<'i, I, S>
+pub fn nested_delimiters<'i, H, I, S>(
+    types: &'i [(H, H)],
+) -> impl Fn() -> NestedDelimiters<'i, H, I, S>
 where
     I: PartialEq,
 {
     || NestedDelimiters {
         types,
         stack: vec![],
+        phantom: Default::default(),
     }
 }

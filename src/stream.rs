@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::location;
-use std::collections::VecDeque;
+use std::{borrow::Borrow, collections::VecDeque};
 
 /// Opaque object representing a saved stream state.
 pub struct SavedState {
@@ -10,13 +10,16 @@ pub struct SavedState {
 
 /// A stream of tokens that can backtrack to arbitrary positions that were
 /// previously saved.
-pub struct Stream<'i, I, L>
+pub struct Stream<'i, H, I, L>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
     L: location::Tracker<I>,
 {
+    phantom: std::marker::PhantomData<I>,
+
     /// Iterator representing the source of the tokens.
-    source: Box<dyn Iterator<Item = &'i I> + 'i>,
+    source: Box<dyn Iterator<Item = H> + 'i>,
 
     /// Whether the source iterator has returned None.
     source_at_eof: bool,
@@ -29,7 +32,7 @@ where
     /// was most recently consumed from the iterator; the front is the oldest
     /// token that we may still have to backtrack to (or perhaps something
     /// older).
-    buffer: VecDeque<(Option<&'i I>, L)>,
+    buffer: VecDeque<(Option<H>, L)>,
 
     /// The index of the next token relative to the front of the buffer.
     index_in_buffer: usize,
@@ -42,20 +45,22 @@ where
     backtrack_markers: Vec<std::rc::Weak<usize>>,
 }
 
-impl<'i, I, L> Stream<'i, I, L>
+impl<'i, H, I, L> Stream<'i, H, I, L>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
     L: location::Tracker<I>,
 {
     /// Constructs a token stream from an iterable, using the default start
     /// location.
-    pub fn new<J>(source: J) -> Self
+    pub fn new<G>(source: G) -> Self
     where
-        J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'i,
+        G: IntoIterator<Item = H>,
+        G::IntoIter: 'i,
         L: Default,
     {
         Self {
+            phantom: Default::default(),
             source: Box::new(source.into_iter()),
             source_at_eof: false,
             source_location: Default::default(),
@@ -67,12 +72,13 @@ where
     }
 
     /// Constructs a token stream from an iterable and an initial start location.
-    pub fn new_with_location<J>(source: J, start_location: L) -> Self
+    pub fn new_with_location<G>(source: G, start_location: L) -> Self
     where
-        J: IntoIterator<Item = &'i I>,
-        J::IntoIter: 'i,
+        G: IntoIterator<Item = H>,
+        G::IntoIter: 'i,
     {
         Self {
+            phantom: Default::default(),
             source: Box::new(source.into_iter()),
             source_at_eof: false,
             source_location: start_location,
@@ -175,7 +181,7 @@ where
             let next_location = self.source_location.clone();
 
             // Advance the location tracker accordingly.
-            self.source_location.advance(next_token);
+            self.source_location.advance(next_token.borrow());
 
             // If the buffer is at capacity, see if we can drop some stuff.
             if self.buffer.len() == self.buffer.capacity() {
@@ -221,18 +227,18 @@ where
 
     /// Returns a reference to the next token (or None for EOF) and its start
     /// location, without advancing the current location.
-    pub fn token(&mut self) -> Option<&'i I> {
+    pub fn token(&mut self) -> Option<H> {
         // Ensure that the next token is in the buffer.
         self.make_next_available();
 
         // Return the next token.
-        self.buffer[self.index_in_buffer].0
+        self.buffer[self.index_in_buffer].0.clone()
     }
 
     /// Returns a reference to the token (or None for EOF) at the given saved
     /// position. The index must have been created using save(), or this may
     /// panic (the token may not be available yet or anymore).
-    pub fn token_at(&mut self, saved_state: &SavedState) -> Option<&'i I> {
+    pub fn token_at(&mut self, saved_state: &SavedState) -> Option<H> {
         // If the index is the next token, reduce to token().
         if *saved_state.index == self.index {
             return self.token();
@@ -240,7 +246,9 @@ where
 
         // Return the requested token from the buffer.
         assert!(*saved_state.index >= self.start_of_buffer());
-        self.buffer[*saved_state.index - self.start_of_buffer()].0
+        self.buffer[*saved_state.index - self.start_of_buffer()]
+            .0
+            .clone()
     }
 
     /// Returns the token index of the next token.
@@ -291,7 +299,7 @@ where
         let mut end = self.location_tracker().clone();
         let mut end_index = self.index();
         if let Some(token) = self.token() {
-            end.advance(token);
+            end.advance(token.borrow());
             end_index += 1;
         }
         self.location_tracker()

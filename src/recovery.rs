@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::borrow::Borrow;
 use std::marker::PhantomData;
 
 use super::error;
@@ -27,10 +28,11 @@ use super::stream;
 ///    .to_recover(find(|t| t == start).scan(nested_delimiters([(start, end), (la, ra), (lb, rb)])).skip().and_return_with(fallback))
 ///
 /// More verbose, but much more powerful, and IMO more clear.
-pub trait Recover<'i, I, C>
+pub trait Recover<'i, H, I, C>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
     /// Called when the given `parser` has failed to parse the input in
     /// `stream` starting from `started_at`. `failed_at` is initially set to
@@ -53,7 +55,12 @@ where
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -61,21 +68,23 @@ where
 }
 
 /// Trait for complete recovery strategies.
-pub trait Strategy<'i, I, C>
+pub trait Strategy<'i, H, I, C>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    Self: Recover<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    Self: Recover<'i, H, I, C>,
 {
 }
 
 /// Trait for incomplete recovery strategies, that require the use of
 /// combinators to complete.
-pub trait IncompleteStrategy<'i, I, C>
+pub trait IncompleteStrategy<'i, H, I, C>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    Self: Recover<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    Self: Recover<'i, H, I, C>,
 {
     //-------------------------------------------------------------------------
     // Strategies that just manipulate the input stream position
@@ -140,7 +149,7 @@ where
     fn scan<T, F>(self, factory: F) -> Scan<Self, F>
     where
         Self: Sized,
-        T: scanner::Scanner<'i, I, C::Error>,
+        T: scanner::Scanner<'i, H, I, C::Error>,
         F: Fn() -> T,
     {
         Scan {
@@ -159,7 +168,7 @@ where
     fn maybe<T>(self, inner: T) -> Maybe<Self, T>
     where
         Self: Sized,
-        T: IncompleteStrategy<'i, I, C>,
+        T: IncompleteStrategy<'i, H, I, C>,
     {
         Maybe { child: self, inner }
     }
@@ -171,7 +180,7 @@ where
     where
         Self: Sized,
         F: Fn(&I) -> bool,
-        T: IncompleteStrategy<'i, I, C>,
+        T: IncompleteStrategy<'i, H, I, C>,
     {
         WhileNot {
             child: self,
@@ -206,7 +215,7 @@ where
     fn try_to_parse<T>(self, parser: T) -> TryToParse<Self, T>
     where
         Self: Sized,
-        T: parser::Parser<'i, I, Output = C::Output, Error = C::Error>,
+        T: parser::Parser<'i, H, I, Output = C::Output, Error = C::Error>,
     {
         TryToParse {
             child: self,
@@ -237,7 +246,7 @@ where
     where
         Self: Sized,
         F: Fn(
-            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
+            <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
         ) -> C::Error,
     {
         PushErrorHere {
@@ -252,7 +261,7 @@ where
     where
         Self: Sized,
         F: Fn(
-            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+            <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
         ) -> C::Error,
     {
         PushErrorUpToHere {
@@ -266,8 +275,8 @@ where
     where
         Self: Sized,
         F: Fn(
-            Option<&I>,
-            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+            Option<H>,
+            <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
         ) -> C::Error,
     {
         PushErrorForToken {
@@ -295,7 +304,7 @@ where
         Self: Sized,
         F: Fn(
             &mut Vec<C::Error>,
-            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
+            <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
         ),
     {
         UpdateErrorsHere {
@@ -311,7 +320,7 @@ where
         Self: Sized,
         F: Fn(
             &mut Vec<C::Error>,
-            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+            <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
         ),
     {
         UpdateErrorsUpToHere {
@@ -327,8 +336,8 @@ where
         Self: Sized,
         F: Fn(
             &mut Vec<C::Error>,
-            Option<&I>,
-            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+            Option<H>,
+            <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
         ),
     {
         UpdateErrorsForToken {
@@ -342,7 +351,7 @@ where
     //-------------------------------------------------------------------------
 
     /// Puts the strategy in a box to restrain it to a known type.
-    fn boxed(self) -> Boxed<'i, I, C>
+    fn boxed(self) -> Boxed<'i, H, I, C>
     where
         Self: Sized + 'i,
     {
@@ -401,7 +410,7 @@ where
     where
         Self: Sized,
         F: Fn(
-            <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+            <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
         ) -> C::Output,
     {
         ReturnWithSpan {
@@ -422,19 +431,25 @@ where
 
 /// A strategy that tries nothing and is all out of ideas: it serves as a
 /// starting point for constructing strategies. See [attempt_to()].
-pub struct AttemptTo<I, C> {
-    phantom: PhantomData<(I, C)>,
+pub struct AttemptTo<H, I, C> {
+    phantom: PhantomData<(H, I, C)>,
 }
 
-impl<'i, I, C> Recover<'i, I, C> for AttemptTo<I, C>
+impl<'i, H, I, C> Recover<'i, H, I, C> for AttemptTo<H, I, C>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
     fn recover(
         &self,
         _parser: &C,
-        _stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        _stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         _started_at: &stream::SavedState,
         _failed_at: &mut stream::SavedState,
         _errors: &mut Vec<C::Error>,
@@ -443,10 +458,11 @@ where
     }
 }
 
-impl<'i, I, C> IncompleteStrategy<'i, I, C> for AttemptTo<I, C>
+impl<'i, H, I, C> IncompleteStrategy<'i, H, I, C> for AttemptTo<H, I, C>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
 }
 
@@ -468,7 +484,12 @@ where
 ///
 /// Also note that most combinators have a shorthand function for
 /// `attempt_to().do_x()`, so you should rarely have to use this directly.
-pub fn attempt_to<I, C>() -> AttemptTo<I, C> {
+pub fn attempt_to<'i, H, I, C>() -> AttemptTo<H, I, C>
+where
+    H: Borrow<I> + Clone + 'i,
+    I: 'i,
+    C: parser::Parser<'i, H, I>,
+{
     AttemptTo {
         phantom: Default::default(),
     }
@@ -479,16 +500,22 @@ pub struct Restart<S> {
     child: S,
 }
 
-impl<'i, I, C, S> Recover<'i, I, C> for Restart<S>
+impl<'i, H, I, C, S> Recover<'i, H, I, C> for Restart<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -502,11 +529,12 @@ where
     }
 }
 
-impl<'i, I, C, S> IncompleteStrategy<'i, I, C> for Restart<S>
+impl<'i, H, I, C, S> IncompleteStrategy<'i, H, I, C> for Restart<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
@@ -515,16 +543,22 @@ pub struct SeekToFailed<S> {
     child: S,
 }
 
-impl<'i, I, C, S> Recover<'i, I, C> for SeekToFailed<S>
+impl<'i, H, I, C, S> Recover<'i, H, I, C> for SeekToFailed<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -538,19 +572,21 @@ where
     }
 }
 
-impl<'i, I, C, S> IncompleteStrategy<'i, I, C> for SeekToFailed<S>
+impl<'i, H, I, C, S> IncompleteStrategy<'i, H, I, C> for SeekToFailed<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::seek_to_failed()].
-pub fn seek_to_failed<'i, I, C>() -> SeekToFailed<AttemptTo<I, C>>
+pub fn seek_to_failed<'i, H, I, C>() -> SeekToFailed<AttemptTo<H, I, C>>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
     attempt_to().seek_to_failed()
 }
@@ -560,16 +596,22 @@ pub struct Skip<S> {
     child: S,
 }
 
-impl<'i, I, C, S> Recover<'i, I, C> for Skip<S>
+impl<'i, H, I, C, S> Recover<'i, H, I, C> for Skip<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -583,19 +625,21 @@ where
     }
 }
 
-impl<'i, I, C, S> IncompleteStrategy<'i, I, C> for Skip<S>
+impl<'i, H, I, C, S> IncompleteStrategy<'i, H, I, C> for Skip<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::skip()].
-pub fn skip<'i, I, C>() -> Skip<AttemptTo<I, C>>
+pub fn skip<'i, H, I, C>() -> Skip<AttemptTo<H, I, C>>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
     attempt_to().skip()
 }
@@ -606,17 +650,23 @@ pub struct SkipIf<S, F> {
     predicate: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for SkipIf<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for SkipIf<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -624,7 +674,11 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
-                if stream.token().map(&self.predicate).unwrap_or(false) {
+                if stream
+                    .token()
+                    .map(|x| (self.predicate)(x.borrow()))
+                    .unwrap_or(false)
+                {
                     stream.advance();
                 }
                 None
@@ -632,20 +686,22 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for SkipIf<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for SkipIf<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
 {
 }
 
 /// See [IncompleteStrategy::skip_if()].
-pub fn skip_if<'i, I, C, F>(predicate: F) -> SkipIf<AttemptTo<I, C>, F>
+pub fn skip_if<'i, H, I, C, F>(predicate: F) -> SkipIf<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(&I) -> bool,
 {
     attempt_to().skip_if(predicate)
@@ -657,17 +713,23 @@ pub struct Find<S, F> {
     predicate: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for Find<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for Find<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -675,7 +737,11 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
-                while !stream.token().map(&self.predicate).unwrap_or(true) {
+                while !stream
+                    .token()
+                    .map(|x| (self.predicate)(x.borrow()))
+                    .unwrap_or(true)
+                {
                     stream.advance();
                 }
                 None
@@ -683,20 +749,22 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for Find<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for Find<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
 {
 }
 
 /// See [IncompleteStrategy::find()].
-pub fn find<'i, I, C, F>(predicate: F) -> Find<AttemptTo<I, C>, F>
+pub fn find<'i, H, I, C, F>(predicate: F) -> Find<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(&I) -> bool,
 {
     attempt_to().find(predicate)
@@ -708,18 +776,24 @@ pub struct Scan<S, F> {
     factory: F,
 }
 
-impl<'i, I, C, S, F, T> Recover<'i, I, C> for Scan<S, F>
+impl<'i, H, I, C, S, F, T> Recover<'i, H, I, C> for Scan<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> T,
-    T: scanner::Scanner<'i, I, C::Error>,
+    T: scanner::Scanner<'i, H, I, C::Error>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -742,23 +816,25 @@ where
     }
 }
 
-impl<'i, I, C, S, F, T> IncompleteStrategy<'i, I, C> for Scan<S, F>
+impl<'i, H, I, C, S, F, T> IncompleteStrategy<'i, H, I, C> for Scan<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> T,
-    T: scanner::Scanner<'i, I, C::Error>,
+    T: scanner::Scanner<'i, H, I, C::Error>,
 {
 }
 
 /// See [IncompleteStrategy::scan()].
-pub fn scan<'i, I, C, F, T>(factory: F) -> Scan<AttemptTo<I, C>, F>
+pub fn scan<'i, H, I, C, F, T>(factory: F) -> Scan<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn() -> T,
-    T: scanner::Scanner<'i, I, C::Error>,
+    T: scanner::Scanner<'i, H, I, C::Error>,
 {
     attempt_to().scan(factory)
 }
@@ -769,17 +845,23 @@ pub struct Maybe<S, T> {
     inner: T,
 }
 
-impl<'i, I, C, S, T> Recover<'i, I, C> for Maybe<S, T>
+impl<'i, H, I, C, S, T> Recover<'i, H, I, C> for Maybe<S, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
-    T: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
+    T: IncompleteStrategy<'i, H, I, C>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -800,21 +882,23 @@ where
     }
 }
 
-impl<'i, I, C, S, T> IncompleteStrategy<'i, I, C> for Maybe<S, T>
+impl<'i, H, I, C, S, T> IncompleteStrategy<'i, H, I, C> for Maybe<S, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
-    T: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
+    T: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::maybe()].
-pub fn maybe<'i, I, C, T>(inner: T) -> Maybe<AttemptTo<I, C>, T>
+pub fn maybe<'i, H, I, C, T>(inner: T) -> Maybe<AttemptTo<H, I, C>, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    T: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    T: IncompleteStrategy<'i, H, I, C>,
 {
     attempt_to().maybe(inner)
 }
@@ -826,18 +910,24 @@ pub struct WhileNot<S, F, T> {
     inner: T,
 }
 
-impl<'i, I, C, S, F, T> Recover<'i, I, C> for WhileNot<S, F, T>
+impl<'i, H, I, C, S, F, T> Recover<'i, H, I, C> for WhileNot<S, F, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
-    T: IncompleteStrategy<'i, I, C>,
+    T: IncompleteStrategy<'i, H, I, C>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -845,7 +935,11 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
-                while !stream.token().map(&self.predicate).unwrap_or(true) {
+                while !stream
+                    .token()
+                    .map(|x| (self.predicate)(x.borrow()))
+                    .unwrap_or(true)
+                {
                     if let Some(result) = self
                         .inner
                         .recover(parser, stream, started_at, failed_at, errors)
@@ -859,23 +953,25 @@ where
     }
 }
 
-impl<'i, I, C, S, F, T> IncompleteStrategy<'i, I, C> for WhileNot<S, F, T>
+impl<'i, H, I, C, S, F, T> IncompleteStrategy<'i, H, I, C> for WhileNot<S, F, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
-    T: IncompleteStrategy<'i, I, C>,
+    T: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::while_not()].
-pub fn while_not<'i, I, C, F, T>(predicate: F, inner: T) -> WhileNot<AttemptTo<I, C>, F, T>
+pub fn while_not<'i, H, I, C, F, T>(predicate: F, inner: T) -> WhileNot<AttemptTo<H, I, C>, F, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(&I) -> bool,
-    T: IncompleteStrategy<'i, I, C>,
+    T: IncompleteStrategy<'i, H, I, C>,
 {
     attempt_to().while_not(predicate, inner)
 }
@@ -909,16 +1005,22 @@ impl<S> Retry<S> {
     }
 }
 
-impl<'i, I, C, S> Recover<'i, I, C> for Retry<S>
+impl<'i, H, I, C, S> Recover<'i, H, I, C> for Retry<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -944,19 +1046,21 @@ where
     }
 }
 
-impl<'i, I, C, S> IncompleteStrategy<'i, I, C> for Retry<S>
+impl<'i, H, I, C, S> IncompleteStrategy<'i, H, I, C> for Retry<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::retry()].
-pub fn retry<'i, I, C>() -> Retry<AttemptTo<I, C>>
+pub fn retry<'i, H, I, C>() -> Retry<AttemptTo<H, I, C>>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
     attempt_to().retry()
 }
@@ -991,17 +1095,23 @@ impl<S, T> TryToParse<S, T> {
     }
 }
 
-impl<'i, I, C, S, T> Recover<'i, I, C> for TryToParse<S, T>
+impl<'i, H, I, C, S, T> Recover<'i, H, I, C> for TryToParse<S, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
-    T: parser::Parser<'i, I, Output = C::Output, Error = C::Error>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
+    T: parser::Parser<'i, H, I, Output = C::Output, Error = C::Error>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1027,21 +1137,23 @@ where
     }
 }
 
-impl<'i, I, C, S, T> IncompleteStrategy<'i, I, C> for TryToParse<S, T>
+impl<'i, H, I, C, S, T> IncompleteStrategy<'i, H, I, C> for TryToParse<S, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
-    T: parser::Parser<'i, I, Output = C::Output, Error = C::Error>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
+    T: parser::Parser<'i, H, I, Output = C::Output, Error = C::Error>,
 {
 }
 
 /// See [IncompleteStrategy::try_to_parse()].
-pub fn try_to_parse<'i, I, C, T>(parser: T) -> TryToParse<AttemptTo<I, C>, T>
+pub fn try_to_parse<'i, H, I, C, T>(parser: T) -> TryToParse<AttemptTo<H, I, C>, T>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    T: parser::Parser<'i, I, Output = C::Output, Error = C::Error>,
+    C: parser::Parser<'i, H, I>,
+    T: parser::Parser<'i, H, I, Output = C::Output, Error = C::Error>,
 {
     attempt_to().try_to_parse(parser)
 }
@@ -1052,17 +1164,23 @@ pub struct PushError<S, F> {
     factory: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for PushError<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for PushError<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> C::Error,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1076,20 +1194,22 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for PushError<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for PushError<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> C::Error,
 {
 }
 
 /// See [IncompleteStrategy::push_error()].
-pub fn push_error<'i, I, C, F>(factory: F) -> PushError<AttemptTo<I, C>, F>
+pub fn push_error<'i, H, I, C, F>(factory: F) -> PushError<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn() -> C::Error,
 {
     attempt_to().push_error(factory)
@@ -1101,19 +1221,25 @@ pub struct PushErrorHere<S, F> {
     factory: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for PushErrorHere<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for PushErrorHere<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
     ) -> C::Error,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1127,24 +1253,26 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for PushErrorHere<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for PushErrorHere<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
     ) -> C::Error,
 {
 }
 
 /// See [IncompleteStrategy::push_error_here()].
-pub fn push_error_here<'i, I, C, F>(factory: F) -> PushErrorHere<AttemptTo<I, C>, F>
+pub fn push_error_here<'i, H, I, C, F>(factory: F) -> PushErrorHere<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
     ) -> C::Error,
 {
     attempt_to().push_error_here(factory)
@@ -1156,19 +1284,25 @@ pub struct PushErrorUpToHere<S, F> {
     factory: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for PushErrorUpToHere<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for PushErrorUpToHere<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Error,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1182,24 +1316,26 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for PushErrorUpToHere<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for PushErrorUpToHere<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Error,
 {
 }
 
 /// See [IncompleteStrategy::push_error_up_to_here()].
-pub fn push_error_up_to_here<'i, I, C, F>(factory: F) -> PushErrorUpToHere<AttemptTo<I, C>, F>
+pub fn push_error_up_to_here<'i, H, I, C, F>(factory: F) -> PushErrorUpToHere<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Error,
 {
     attempt_to().push_error_up_to_here(factory)
@@ -1211,20 +1347,26 @@ pub struct PushErrorForToken<S, F> {
     factory: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for PushErrorForToken<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for PushErrorForToken<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
-        Option<&I>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        Option<H>,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Error,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1238,26 +1380,28 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for PushErrorForToken<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for PushErrorForToken<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
-        Option<&I>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        Option<H>,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Error,
 {
 }
 
 /// See [IncompleteStrategy::push_error_for_token()].
-pub fn push_error_for_token<'i, I, C, F>(factory: F) -> PushErrorForToken<AttemptTo<I, C>, F>
+pub fn push_error_for_token<'i, H, I, C, F>(factory: F) -> PushErrorForToken<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(
-        Option<&I>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        Option<H>,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Error,
 {
     attempt_to().push_error_for_token(factory)
@@ -1269,17 +1413,23 @@ pub struct UpdateErrors<S, F> {
     updater: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for UpdateErrors<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for UpdateErrors<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&mut Vec<C::Error>),
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1293,20 +1443,22 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for UpdateErrors<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for UpdateErrors<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&mut Vec<C::Error>),
 {
 }
 
 /// See [IncompleteStrategy::update_errors()].
-pub fn update_errors<'i, I, C, F>(updater: F) -> UpdateErrors<AttemptTo<I, C>, F>
+pub fn update_errors<'i, H, I, C, F>(updater: F) -> UpdateErrors<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(&mut Vec<C::Error>),
 {
     attempt_to().update_errors(updater)
@@ -1318,20 +1470,26 @@ pub struct UpdateErrorsHere<S, F> {
     updater: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for UpdateErrorsHere<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for UpdateErrorsHere<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
         &mut Vec<C::Error>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
     ),
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1345,26 +1503,28 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for UpdateErrorsHere<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for UpdateErrorsHere<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
         &mut Vec<C::Error>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
     ),
 {
 }
 
 /// See [IncompleteStrategy::update_errors_here()].
-pub fn update_errors_here<'i, I, C, F>(updater: F) -> UpdateErrorsHere<AttemptTo<I, C>, F>
+pub fn update_errors_here<'i, H, I, C, F>(updater: F) -> UpdateErrorsHere<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(
         &mut Vec<C::Error>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
     ),
 {
     attempt_to().update_errors_here(updater)
@@ -1376,20 +1536,26 @@ pub struct UpdateErrorsUpToHere<S, F> {
     updater: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for UpdateErrorsUpToHere<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for UpdateErrorsUpToHere<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
         &mut Vec<C::Error>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ),
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1403,26 +1569,30 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for UpdateErrorsUpToHere<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for UpdateErrorsUpToHere<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
         &mut Vec<C::Error>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ),
 {
 }
 
 /// See [IncompleteStrategy::update_errors_up_to_here()].
-pub fn update_errors_up_to_here<'i, I, C, F>(updater: F) -> UpdateErrorsUpToHere<AttemptTo<I, C>, F>
+pub fn update_errors_up_to_here<'i, H, I, C, F>(
+    updater: F,
+) -> UpdateErrorsUpToHere<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(
         &mut Vec<C::Error>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ),
 {
     attempt_to().update_errors_up_to_here(updater)
@@ -1434,21 +1604,27 @@ pub struct UpdateErrorsForToken<S, F> {
     updater: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for UpdateErrorsForToken<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for UpdateErrorsForToken<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
         &mut Vec<C::Error>,
-        Option<&I>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        Option<H>,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ),
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1462,51 +1638,62 @@ where
     }
 }
 
-impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for UpdateErrorsForToken<S, F>
+impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for UpdateErrorsForToken<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
         &mut Vec<C::Error>,
-        Option<&I>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        Option<H>,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ),
 {
 }
 
 /// See [IncompleteStrategy::update_errors_for_token()].
-pub fn update_errors_for_token<'i, I, C, F>(updater: F) -> UpdateErrorsForToken<AttemptTo<I, C>, F>
+pub fn update_errors_for_token<'i, H, I, C, F>(
+    updater: F,
+) -> UpdateErrorsForToken<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(
         &mut Vec<C::Error>,
-        Option<&I>,
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        Option<H>,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ),
 {
     attempt_to().update_errors_for_token(updater)
 }
 
 /// See [IncompleteStrategy::boxed()].
-pub struct Boxed<'i, I, C>
+pub struct Boxed<'i, H, I, C>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
-    pub(crate) strategy: Box<dyn IncompleteStrategy<'i, I, C> + 'i>,
+    pub(crate) strategy: Box<dyn IncompleteStrategy<'i, H, I, C> + 'i>,
 }
 
-impl<'i, I, C> Recover<'i, I, C> for Boxed<'i, I, C>
+impl<'i, H, I, C> Recover<'i, H, I, C> for Boxed<'i, H, I, C>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1516,10 +1703,11 @@ where
     }
 }
 
-impl<'i, I, C> IncompleteStrategy<'i, I, C> for Boxed<'i, I, C>
+impl<'i, H, I, C> IncompleteStrategy<'i, H, I, C> for Boxed<'i, H, I, C>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
 {
 }
 
@@ -1529,17 +1717,23 @@ pub struct Return<S, O> {
     output: O,
 }
 
-impl<'i, I, C, S> Recover<'i, I, C> for Return<S, C::Output>
+impl<'i, H, I, C, S> Recover<'i, H, I, C> for Return<S, C::Output>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     C::Output: Clone,
-    S: IncompleteStrategy<'i, I, C>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1550,20 +1744,22 @@ where
     }
 }
 
-impl<'i, I, C, S> Strategy<'i, I, C> for Return<S, C::Output>
+impl<'i, H, I, C, S> Strategy<'i, H, I, C> for Return<S, C::Output>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     C::Output: Clone,
-    S: IncompleteStrategy<'i, I, C>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::and_return()].
-pub fn just_return<'i, I, C>(output: C::Output) -> Return<AttemptTo<I, C>, C::Output>
+pub fn just_return<'i, H, I, C>(output: C::Output) -> Return<AttemptTo<H, I, C>, C::Output>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     C::Output: Clone,
 {
     attempt_to().do_nothing().and_return(output)
@@ -1575,17 +1771,23 @@ pub struct ReturnWith<S, F> {
     output: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for ReturnWith<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for ReturnWith<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> C::Output,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1596,20 +1798,22 @@ where
     }
 }
 
-impl<'i, I, C, S, F> Strategy<'i, I, C> for ReturnWith<S, F>
+impl<'i, H, I, C, S, F> Strategy<'i, H, I, C> for ReturnWith<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> C::Output,
 {
 }
 
 /// See [IncompleteStrategy::and_return_with()].
-pub fn just_return_with<'i, I, C, F>(output: F) -> ReturnWith<AttemptTo<I, C>, F>
+pub fn just_return_with<'i, H, I, C, F>(output: F) -> ReturnWith<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn() -> C::Output,
 {
     attempt_to().do_nothing().and_return_with(output)
@@ -1621,19 +1825,25 @@ pub struct ReturnWithSpan<S, F> {
     output: F,
 }
 
-impl<'i, I, C, S, F> Recover<'i, I, C> for ReturnWithSpan<S, F>
+impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for ReturnWithSpan<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Output,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1644,24 +1854,26 @@ where
     }
 }
 
-impl<'i, I, C, S, F> Strategy<'i, I, C> for ReturnWithSpan<S, F>
+impl<'i, H, I, C, S, F> Strategy<'i, H, I, C> for ReturnWithSpan<S, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Output,
 {
 }
 
 /// See [IncompleteStrategy::and_return_with_span()].
-pub fn just_return_with_span<'i, I, C, F>(output: F) -> ReturnWithSpan<AttemptTo<I, C>, F>
+pub fn just_return_with_span<'i, H, I, C, F>(output: F) -> ReturnWithSpan<AttemptTo<H, I, C>, F>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
+    C: parser::Parser<'i, H, I>,
     F: Fn(
-        <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
     ) -> C::Output,
 {
     attempt_to().do_nothing().and_return_with_span(output)
@@ -1672,16 +1884,22 @@ pub struct OrFail<S> {
     child: S,
 }
 
-impl<'i, I, C, S> Recover<'i, I, C> for OrFail<S>
+impl<'i, H, I, C, S> Recover<'i, H, I, C> for OrFail<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
     fn recover(
         &self,
         parser: &C,
-        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<
+            'i,
+            H,
+            I,
+            <C::Error as error::Error<'i, H, I>>::LocationTracker,
+        >,
         started_at: &stream::SavedState,
         failed_at: &mut stream::SavedState,
         errors: &mut Vec<C::Error>,
@@ -1691,11 +1909,12 @@ where
     }
 }
 
-impl<'i, I, C, S> Strategy<'i, I, C> for OrFail<S>
+impl<'i, H, I, C, S> Strategy<'i, H, I, C> for OrFail<S>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    C: parser::Parser<'i, I>,
-    S: IncompleteStrategy<'i, I, C>,
+    C: parser::Parser<'i, H, I>,
+    S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
@@ -1707,7 +1926,7 @@ mod tests {
     fn test_always_fail() {
         let parser = just(&'a')
             .to_recover(attempt_to().do_nothing().or_fail())
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1724,7 +1943,7 @@ mod tests {
     fn test_just_return() {
         let parser = just(&'a')
             .to_recover(just_return(&'a'))
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1744,7 +1963,7 @@ mod tests {
     fn test_just_return_with() {
         let parser = just(&'a')
             .to_recover(just_return_with(|| &'a'))
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1767,7 +1986,7 @@ mod tests {
                 assert_eq!(span, 0..0);
                 &'a'
             }))
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
         assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
@@ -1790,7 +2009,7 @@ mod tests {
                 assert_eq!(span, 0..1);
                 &'a'
             }))
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -1806,7 +2025,7 @@ mod tests {
                 assert_eq!(span, 0..0);
                 &'a'
             }))
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -1826,7 +2045,7 @@ mod tests {
                 assert_eq!(span, 0..1);
                 (&'a', &'b')
             }))
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['a', 'c', 'b']);
         assert!(matches!(
             stream.next(),
@@ -1839,7 +2058,7 @@ mod tests {
     fn test_skip_if() {
         let parser = just(&'a')
             .to_recover(skip_if(|t| t == &'c').and_return(&'a'))
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -1862,7 +2081,7 @@ mod tests {
     fn test_find_retry() {
         let parser = just(&'a')
             .to_recover(find(|t| t == &'a').retry().or_fail())
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -1882,7 +2101,7 @@ mod tests {
     fn test_while_not_retry() {
         let parser = just(&'a')
             .to_recover(while_not(|t| t == &'x', retry()).or_fail())
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),
@@ -1909,11 +2128,15 @@ mod tests {
     fn test_nested_delimiters() {
         let parser = just(&'a')
             .to_recover(
-                scan(nested_delimiters(&[('(', ')'), ('|', '|'), ('[', ']')]))
-                    .skip()
-                    .and_return(&'a'),
+                scan(nested_delimiters(&[
+                    (&'(', &')'),
+                    (&'|', &'|'),
+                    (&'[', &']'),
+                ]))
+                .skip()
+                .and_return(&'a'),
             )
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
             stream.next(),

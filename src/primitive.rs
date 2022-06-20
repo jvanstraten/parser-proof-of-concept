@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::borrow::Borrow;
+
 use super::error;
 use super::parser;
 use super::stream;
@@ -9,17 +11,18 @@ pub struct Empty<E> {
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, E> parser::Parser<'i, I> for Empty<E>
+impl<'i, H, I, E> parser::Parser<'i, H, I> for Empty<E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
     type Output = ();
     type Error = E;
 
     fn parse_internal(
         &self,
-        _stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        _stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         parser::Result::Success(())
@@ -38,17 +41,18 @@ pub struct None<O, E> {
     phantom: std::marker::PhantomData<(O, E)>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for None<O, E>
+impl<'i, H, I, O, E> parser::Parser<'i, H, I> for None<O, E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
     type Output = Option<O>;
     type Error = E;
 
     fn parse_internal(
         &self,
-        _stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        _stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         parser::Result::Success(None)
@@ -68,17 +72,18 @@ pub struct End<E> {
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, E> parser::Parser<'i, I> for End<E>
+impl<'i, H, I, E> parser::Parser<'i, H, I> for End<E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
     type Output = ();
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         if stream.eof() {
@@ -104,50 +109,55 @@ pub fn end<E>() -> End<E> {
 }
 
 /// See [just()].
-pub struct Just<'i, I, E>
+pub struct Just<'i, H, I, E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
 {
-    expected: &'i I,
-    phantom: std::marker::PhantomData<E>,
+    expected: H,
+    phantom: std::marker::PhantomData<(&'i I, E)>,
 }
 
-impl<'i, I, E> parser::Parser<'i, I> for Just<'i, I, E>
+impl<'i, H, I, E> parser::Parser<'i, H, I> for Just<'i, H, I, E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
-    type Output = &'i I;
+    type Output = H;
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Match the incoming token.
         let found = stream.token();
-        if found == Some(self.expected) {
-            // Matched successfully, skip past it and return success.
-            stream.advance();
-            parser::Result::Success(self.expected)
-        } else {
-            // Construct error message.
-            parser::Result::Failed(
-                stream.index(),
-                vec![E::expected_found(
-                    [Some(self.expected)],
-                    found,
-                    error::At::Span(stream.span()),
-                )],
-            )
+        if let Some(found) = &found {
+            if found.borrow() == self.expected.borrow() {
+                // Matched successfully, skip past it and return success.
+                stream.advance();
+                return parser::Result::Success(self.expected.clone());
+            }
         }
+
+        // Construct error message.
+        parser::Result::Failed(
+            stream.index(),
+            vec![E::expected_found(
+                [Some(self.expected.clone())],
+                found,
+                error::At::Span(stream.span()),
+            )],
+        )
     }
 }
 
 /// Match the given token exactly, returning a reference to the incoming token.
-pub fn just<'i, I, E>(expected: &'i I) -> Just<'i, I, E>
+pub fn just<'i, H, I, E>(expected: H) -> Just<'i, H, I, E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
 {
     Just {
@@ -162,28 +172,29 @@ pub struct Filter<F, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, F, E> parser::Parser<'i, I> for Filter<F, E>
+impl<'i, H, I, F, E> parser::Parser<'i, H, I> for Filter<F, E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
     F: Fn(&I) -> bool,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
-    type Output = &'i I;
+    type Output = H;
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         stream.attempt(|stream| {
             // Match the incoming token.
             let found = stream.token();
-            if let Some(found) = found {
-                if (self.filter)(found) {
+            if let Some(found) = &found {
+                if (self.filter)(found.borrow()) {
                     // Matched successfully, skip past it and return success.
                     stream.advance();
-                    return Ok(parser::Result::Success(found));
+                    return Ok(parser::Result::Success(found.clone()));
                 }
             }
 
@@ -214,24 +225,25 @@ pub struct FilterMap<F, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, F, O, E> parser::Parser<'i, I> for FilterMap<F, E>
+impl<'i, H, I, F, O, E> parser::Parser<'i, H, I> for FilterMap<F, E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i,
     F: Fn(&I) -> Option<O>,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
     type Output = O;
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Match the incoming token.
         let found = stream.token();
-        if let Some(found) = found {
-            if let Some(output) = (self.filter)(found) {
+        if let Some(found) = &found {
+            if let Some(output) = (self.filter)(found.borrow()) {
                 // Matched successfully, skip past it and return success.
                 stream.advance();
                 return parser::Result::Success(output);
@@ -264,37 +276,41 @@ pub struct Seq<'i, O, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for Seq<'i, O, E>
+impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Seq<'i, O, E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
-    E: error::Error<'i, I>,
+    &'i O: IntoIterator<Item = H>,
+    E: error::Error<'i, H, I>,
 {
     type Output = &'i O;
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         stream.attempt(|stream| {
             // Match concatenation of tokens returned by expected.
             for expected in self.expected.into_iter() {
                 let found = stream.token();
-                if found == Some(expected) {
-                    stream.advance();
-                } else {
-                    // Construct error message.
-                    return Err(parser::Result::Failed(
-                        stream.index(),
-                        vec![E::expected_found(
-                            [Some(expected)],
-                            found,
-                            error::At::Span(stream.span()),
-                        )],
-                    ));
+                if let Some(found) = &found {
+                    if found.borrow() == expected.borrow() {
+                        stream.advance();
+                        continue;
+                    }
                 }
+
+                // Construct error message.
+                return Err(parser::Result::Failed(
+                    stream.index(),
+                    vec![E::expected_found(
+                        [Some(expected)],
+                        found,
+                        error::At::Span(stream.span()),
+                    )],
+                ));
             }
 
             // All elements were matched successfully.
@@ -309,10 +325,11 @@ where
 /// Note: couldn't be bothered with the magic to make just() generic enough to
 /// work for single inputs as well. I'm not sure how it works in Chumsky
 /// exactly, but can't think of any reason why it wouldn't work here, too.
-pub fn seq<'i, I, O, E>(expected: &'i O) -> Seq<'i, O, E>
+pub fn seq<'i, H, I, O, E>(expected: &'i O) -> Seq<'i, O, E>
 where
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
+    &'i O: IntoIterator<Item = H>,
 {
     Seq {
         expected,
@@ -321,33 +338,34 @@ where
 }
 
 /// See [one_of()].
-pub struct OneOf<'i, O, E> {
-    expected: &'i O,
+pub struct OneOf<'i, G, E> {
+    expected: &'i G,
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for OneOf<'i, O, E>
+impl<'i, G, H, I, E> parser::Parser<'i, H, I> for OneOf<'i, G, E>
 where
+    &'i G: IntoIterator<Item = H> + 'i,
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
-    type Output = &'i I;
+    type Output = H;
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Get the next token from the input stream, and match it against the
         // set of alternatives.
         let found = stream.token();
-        if let Some(found) = found {
+        if let Some(found) = &found {
             for expected in self.expected.into_iter() {
-                if found == expected {
+                if found.borrow() == expected.borrow() {
                     stream.advance();
-                    return parser::Result::Success(found);
+                    return parser::Result::Success(found.clone());
                 }
             }
         }
@@ -366,10 +384,11 @@ where
 
 /// Match one of the given sequence of tokens exactly, returning a reference to
 /// the incoming token that matched.
-pub fn one_of<'i, I, O, E>(expected: &'i O) -> OneOf<'i, O, E>
+pub fn one_of<'i, G, H, I, E>(expected: &'i G) -> OneOf<G, E>
 where
+    &'i G: IntoIterator<Item = H> + 'i,
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
 {
     OneOf {
         expected,
@@ -378,23 +397,24 @@ where
 }
 
 /// See [none_of()].
-pub struct NoneOf<'i, O, E> {
-    rejected: &'i O,
+pub struct NoneOf<'i, G, E> {
+    rejected: &'i G,
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for NoneOf<'i, O, E>
+impl<'i, G, H, I, E> parser::Parser<'i, H, I> for NoneOf<'i, G, E>
 where
+    &'i G: IntoIterator<Item = H> + 'i,
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
-    E: error::Error<'i, I>,
+    E: error::Error<'i, H, I>,
 {
-    type Output = &'i I;
+    type Output = H;
     type Error = E;
 
     fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        stream: &mut stream::Stream<'i, H, I, E::LocationTracker>,
         _enable_recovery: bool,
     ) -> parser::Result<Self::Output, E> {
         // Get the next token from the input stream, and match it against the
@@ -402,7 +422,7 @@ where
         let found = stream.token();
         if let Some(found) = found {
             for expected in self.rejected.into_iter() {
-                if found == expected {
+                if found.borrow() == expected.borrow() {
                     // Construct error message.
                     return parser::Result::Failed(
                         stream.index(),
@@ -434,10 +454,11 @@ where
 
 /// Match the next token if it matches none of the given tokens, returning a
 /// reference to the incoming token that matched.
-pub fn none_of<'i, I, O, E>(rejected: &'i O) -> NoneOf<'i, O, E>
+pub fn none_of<'i, G, H, I, E>(rejected: &'i G) -> NoneOf<'i, G, E>
 where
+    &'i G: IntoIterator<Item = H> + 'i,
+    H: Borrow<I> + Clone + 'i,
     I: 'i + PartialEq,
-    &'i O: IntoIterator<Item = &'i I>,
 {
     NoneOf {
         rejected,
@@ -451,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_empty() {
-        let parser = empty::<SimpleError<_>>();
+        let parser = empty::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(())));
         assert_eq!(
@@ -462,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_none() {
-        let parser = none::<usize, SimpleError<_>>();
+        let parser = none::<usize, SimpleError<_, char>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(None)));
         assert_eq!(
@@ -473,19 +494,19 @@ mod tests {
 
     #[test]
     fn test_end() {
-        let parser = end::<SimpleError<_>>();
+        let parser = end::<SimpleError<_, char>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
         assert_eq!(
             stream.tail().cloned().collect::<Vec<_>>(),
             vec!['a', 'b', 'c']
         );
-        assert_eq!(Parser::<char>::parse(&parser, &[]), Ok(()));
+        assert_eq!(parser.parse(&[]), Ok(()));
     }
 
     #[test]
     fn test_just() {
-        let parser = just(&'a').with_error::<SimpleError<_>>();
+        let parser = just(&'a').with_error::<SimpleError<_, char>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -501,7 +522,7 @@ mod tests {
 
     #[test]
     fn test_filter() {
-        let parser = filter(|x| *x == 'a').with_error::<SimpleError<_>>();
+        let parser = filter(|x| *x == 'a').with_error::<SimpleError<_, char>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -517,8 +538,8 @@ mod tests {
 
     #[test]
     fn test_filter_map() {
-        let parser =
-            filter_map(|x| if *x == 'a' { Some('A') } else { None }).with_error::<SimpleError<_>>();
+        let parser = filter_map(|x| if *x == 'a' { Some('A') } else { None })
+            .with_error::<SimpleError<_, char>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success('A'))));
@@ -534,7 +555,7 @@ mod tests {
 
     #[test]
     fn test_seq() {
-        let parser = seq(&['a', 'b']).with_error::<SimpleError<_>>();
+        let parser = seq::<_, &char, _, _>(&['a', 'b']).with_error::<SimpleError<_, char>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(
@@ -560,7 +581,7 @@ mod tests {
 
     #[test]
     fn test_one_of() {
-        let parser = one_of(&['a', 'b']).with_error::<SimpleError<_>>();
+        let parser = one_of::<_, _, &char, _>(&['a', 'b']).with_error::<SimpleError<_, char>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -580,7 +601,7 @@ mod tests {
 
     #[test]
     fn test_none_of() {
-        let parser = none_of(&['a', 'b']).with_error::<SimpleError<_>>();
+        let parser = none_of::<_, _, &char, _>(&['a', 'b']).with_error::<SimpleError<_, char>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
