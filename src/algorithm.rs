@@ -198,39 +198,40 @@ where
         // parsing the separator succeeds but parsing the item fails. If
         // trailing separators are allowed we also save the state because this
         // is complicated enough as is, but we don't restore it in that case.
-        let before_separator =
-            if let (Some(separator), true) = (separator, !output.is_empty() || allow_leading) {
-                let before_separator = stream.save();
-                match parser::Parser::parse_internal(separator, stream, recover && !output.is_empty()) {
-                    parser::Result::Success(_) => (),
-                    parser::Result::Recovered(_, es_b) => {
-                        if let Some(es) = &mut recovery {
-                            es.extend(es_b);
-                        } else {
-                            recovery = Some(es_b);
-                        }
-                    }
-                    parser::Result::Failed(i, es) => {
-                        if output.is_empty() {
-                            // Leading separator; this is optional, so don't
-                            // fail.
-                        } else if output.len() >= minimum {
-                            // We've already matched enough, we're done.
-                            return parser::Result::Success(output);
-                        } else {
-                            // We've not matched the minimum amount of repetitions
-                            // yet. Getting here also means recovery failed. We
-                            // need to restore the state here; previous parsers
-                            // will have mutated it.
-                            stream.restore(&initial);
-                            return parser::Result::Failed(i, es);
-                        }
+        let before_separator = if let (Some(separator), true) =
+            (separator, !output.is_empty() || allow_leading)
+        {
+            let before_separator = stream.save();
+            match parser::Parser::parse_internal(separator, stream, recover && !output.is_empty()) {
+                parser::Result::Success(_) => (),
+                parser::Result::Recovered(_, es_b) => {
+                    if let Some(es) = &mut recovery {
+                        es.extend(es_b);
+                    } else {
+                        recovery = Some(es_b);
                     }
                 }
-                Some(before_separator)
-            } else {
-                None
-            };
+                parser::Result::Failed(i, es) => {
+                    if output.is_empty() {
+                        // Leading separator; this is optional, so don't
+                        // fail.
+                    } else if output.len() >= minimum {
+                        // We've already matched enough, we're done.
+                        return parser::Result::Success(output);
+                    } else {
+                        // We've not matched the minimum amount of repetitions
+                        // yet. Getting here also means recovery failed. We
+                        // need to restore the state here; previous parsers
+                        // will have mutated it.
+                        stream.restore(&initial);
+                        return parser::Result::Failed(i, es);
+                    }
+                }
+            }
+            Some(before_separator)
+        } else {
+            None
+        };
 
         // If we do allow for trailing separators, stop parsing here if we have
         // the maximum amount of items.

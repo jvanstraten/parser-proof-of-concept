@@ -4,6 +4,36 @@ use super::error;
 use super::parser;
 use super::stream;
 
+/// See [fail()].
+pub struct Fail<O, E> {
+    phantom: std::marker::PhantomData<(O, E)>,
+}
+
+impl<'i, I, O, E> parser::Parser<'i, I> for Fail<O, E>
+where
+    I: 'i,
+    E: error::Error<'i, I>,
+{
+    type Output = O;
+    type Error = E;
+
+    fn parse_internal(
+        &self,
+        stream: &mut stream::Stream<'i, I, E::LocationTracker>,
+        _enable_recovery: bool,
+    ) -> parser::Result<Self::Output, E> {
+        parser::Result::Failed(stream.index(), vec![])
+    }
+}
+
+/// Always silently fails to parse the given input. Note that this is really
+/// only useful within the context of recovery logic.
+pub fn fail<O, E>() -> Fail<O, E> {
+    Fail {
+        phantom: Default::default(),
+    }
+}
+
 /// See [empty()].
 pub struct Empty<E> {
     phantom: std::marker::PhantomData<E>,

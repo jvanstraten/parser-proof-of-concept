@@ -1,160 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-/*
-NOTES:
-
-Parser::to_recover() -> Strategy
-    Just runs the child parser, but returns a strategy object to build a
-    recovery method.
-
-to_recover() -> Strategy
-    A more descriptive shorthand for fail().to_recover(), where fail() is a
-    parser that always silently fails to parse. All builtin strategies also
-    have functions that further condence to_recover().<strategy>() to just
-    <strategy>().
-
-## Recovery strategies
-
-Strategies are run when a preceding parser fails to attempt to recover from the
-parse error. The provided strategies are combinator-based building blocks that
-can be used to create complex recovery methods.
-
-Each strategy follows this pattern:
- - attempt to parse or recover with the parser or strategy it was built from;
- - (only) if the above fails, attempt to recover using the logic defined by
-   the recovery type.
-
-When run, a strategy may mutate the current parser state at will. This
-includes:
- - the position in the input stream;
- - the "failure point," a special position in the input stream designating the
-   place where the previously called parser failed;
- - the list of errors produced by the parser being recovered from and previous
-   strategies;
-
-Most of the strategies only affect one thing at a time.
-
-### Strategies that just manipulate the input stream position
-
-[Strategy::]restart() -> Strategy
-    Backtracks to the position in the input stream where the initial parser
-    started from.
-
-[Strategy::]seek_to_failed() -> Strategy
-    Seek in the input stream to get to the point where the previous parser
-    failed.
-
-[Strategy::]skip() -> Strategy
-    Skips a single token unconditionally.
-
-[Strategy::]skip_if(|&I| -> bool) -> Strategy
-    Skips a single token if it matches the predicate.
-
-[Strategy::]find(|&I| -> bool) -> Strategy
-    Skips tokens until the next token matches the given predicate or EOF is
-    reached.
-
-[Strategy::]while_not(|&I| -> bool, Strategy) -> Strategy
-    Skips tokens until the next token matches the given predicate or EOF is
-    reached. Whenever the predicate fails, tries to recover with the given
-    strategy.
-
-### Strategies that run parsers
-
-[Strategy::]retry() -> Strategy
-    Tries to run the child parser again. Only makes sense when this is done
-    from a different position in the input stream.
-
-[Strategy::]maybe(Parser) -> Strategy
-    Tries to recover with the given parser or recovery method. In the latter
-    case, failing recovery backtracks to where parsing started. The parser
-    failure point is adjusted, so calling seek_to_failed() afterward will
-    advance the input stream to wherever the parser failed.
-
-### Strategies that run scanners
-
-[Strategy::]scan(|| Scanner) -> Strategy
-    Runs a scanner. This is effectively Strategy::find(), but using a
-    customizable trait that can also maintain state, yield errors, and do
-    something upon EOF. The provided function acts as a factory for the
-    object, in order to set its initial state.
-
-### Strategies that manipulate the error list
-
-[Strategy::]push_error(|| -> E) -> Strategy
-    Pushes an error constructed with the given factory.
-
-[Strategy::]push_error_here(|location| -> E) -> Strategy
-    Pushes an error using the current input stream position as input.
-
-[Strategy::]push_error_up_to_here(|span| -> E) -> Strategy
-    Pushes an error using the span from the start position to the current
-    position as input.
-    
-    parser
-        .to_recover()                       // define recovery strategy 
-        .while_not(|| false,                // while not EOF:
-            to_recover()                    //   define inner by means of a recovery strategy
-            .push_error_up_to_here(         //   construct an error indicating which tokens
-                |span| ignored_input(span)  //     were skipped
-            ).retry()                       //   retry parsing from this point
-            .or_fail()                      //   fail the inner strategy if that parser failed
-        ).silently()                        // ignore errors from the inner recovery unless it succeeds
-        .restart()...                       // if that failed, try something else
-
-[Strategy::]push_error_for_next(|Option<&I>, span| -> E) -> Strategy
-    Pushes an error for the next token.
-
-[Strategy::]update_errors(|&mut Vec<E>|) -> Strategy
-    Like push_error(), but given a mutable reference to the complete error list
-    instead.
-
-[Strategy::]update_errors_here(|&mut Vec<E>, location|) -> Strategy
-    Like push_error_here(), but given a mutable reference to the complete error
-    list instead.
-
-[Strategy::]update_errors_up_to_here(|&mut Vec<E>, span|) -> Strategy
-    Like push_error_up_to_here(), but given a mutable reference to the complete
-    error list instead.
-
-[Strategy::]update_errors_for_next(|&mut Vec<E>, Option<&I>, span|) -> Strategy
-    Like push_error_for_next(), but given a mutable reference to the complete
-    error list instead.
-
-### Completing strategies
-
-In order to complete a strategy and turn it into a parser again, you need to
-use one of these.
-
-Strategy::and_return(O) -> Parser
-    Successfully completes a strategy by returning the given output, as if it
-    had been parsed spanning from the start position to the current position.
-
-Strategy::and_return_with(|| O) -> Parser
-    Like and_return(), but uses a factory to construct the output.
-
-Strategy::and_return_with_span(|span| O) -> Parser
-    Like and_return(), but uses a factory to construct the output, which is
-    also passed the span from the start position to the current position.
-
-Strategy::or_fail() -> Parser
-    Completes a strategy with failure if none of the preceding strategies
-    were successful.
-
-### Misc. strategies
-
-Strategy::boxed() -> Strategy
-    Boxes a strategy to fix its type.
-
-Strategy::do_nothing() -> Strategy
-    Just returns itself. Intended to be used with and_return() and friends for
-    legibility when the recovery method is just to parse nothing and yield some
-    output:
-    
-    parser.to_recover().do_nothing().and_return(output)
-
-*/
-
+use crate::primitive;
 
 use super::error;
 use super::location;
@@ -380,8 +226,8 @@ pub trait Strategy<'i, I: 'i> {
     /// Does nothing. You can use this when you want to recover by returning
     /// something without skipping any tokens and you want the functions to
     /// read like an English sentence; for example
-    /// 
-    /// ```
+    ///
+    /// ```ignore
     /// parser.to_recover(attempt_to().do_nothing().and_return(...))
     /// ```
     fn do_nothing(self) -> Self
@@ -391,9 +237,10 @@ pub trait Strategy<'i, I: 'i> {
         self
     }
 
-    /// Succeed with recovery by emitting the given output, as if the tokens
-    /// from the start position up to the current stream position had been
-    /// parsed into that.
+    /// Complete the recovery logic by emitting the given output to succeed, as
+    /// if the tokens from the start position up to the current stream position
+    /// had been parsed into that. Recovery strategies that end with this will
+    /// thus always succeed.
     fn and_return(self, output: Self::Output) -> Return<Self, Self::Output>
     where
         Self: Sized,
@@ -409,9 +256,7 @@ pub trait Strategy<'i, I: 'i> {
     fn and_return_with<F>(self, output: F) -> ReturnWith<Self, F>
     where
         Self: Sized,
-        F: Fn(
-            <<Self::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
-        ) -> Self::Output,
+        F: Fn() -> Self::Output,
     {
         ReturnWith {
             child: self,
@@ -419,19 +264,55 @@ pub trait Strategy<'i, I: 'i> {
         }
     }
 
-    // todo or_fail()
+    /// Like and_return_with(), but the function is given the span representing
+    /// the complete set of tokens that have been skipped by the preceding
+    /// recovery combinators, just like with_span().
+    fn and_return_with_span<F>(self, output: F) -> ReturnWithSpan<Self, F>
+    where
+        Self: Sized,
+        F: Fn(
+            <<Self::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
+        ) -> Self::Output,
+    {
+        ReturnWithSpan {
+            child: self,
+            output,
+        }
+    }
+
+    /// Complete the recovery logic by failing. It is thus up to preceding
+    /// recovery combinators to succeed with recovery.
+    fn or_fail(self) -> OrFail<Self>
+    where
+        Self: Sized,
+    {
+        OrFail { child: self }
+    }
 }
 
 /// Helper function to implement [parser::Parser::parse_internal()] for
 /// terminating strategies.
-fn parse_internal_to_complete_strategy<'i, I, T>(
+fn parse_internal_to_complete_strategy<'i, I, T, F>(
     strategy: &T,
-    stream: &mut stream::Stream<'i, I, <<T as Strategy<'i, I>>::Error as error::Error<'i, I>>::LocationTracker>,
+    or_else: F,
+    stream: &mut stream::Stream<
+        'i,
+        I,
+        <<T as Strategy<'i, I>>::Error as error::Error<'i, I>>::LocationTracker,
+    >,
     enable_recovery: bool,
 ) -> parser::Result<<T as Strategy<'i, I>>::Output, <T as Strategy<'i, I>>::Error>
 where
     I: 'i,
-    T: Strategy<'i, I> + parser::Parser<'i, I, Output = <T as Strategy<'i, I>>::Output, Error = <T as Strategy<'i, I>>::Error>
+    T: Strategy<'i, I>,
+    F: FnOnce(
+        &mut stream::Stream<
+            'i,
+            I,
+            <<T as Strategy<'i, I>>::Error as error::Error<'i, I>>::LocationTracker,
+        >,
+        &stream::SavedState,
+    ) -> Option<<T as Strategy<'i, I>>::Output>,
 {
     match strategy.parse_child(stream, enable_recovery) {
         parser::Result::Failed(last_token_matched, mut errors) => {
@@ -441,12 +322,9 @@ where
             } else {
                 let started_at = stream.save();
                 let mut failed_at = stream.save_at(last_token_matched);
-                let recovery = strategy.recover(
-                    stream,
-                    &started_at,
-                    &mut failed_at,
-                    &mut errors,
-                );
+                let recovery = strategy
+                    .recover(stream, &started_at, &mut failed_at, &mut errors)
+                    .or_else(|| or_else(stream, &started_at));
                 if let Some(output) = recovery {
                     // Recovery successful.
                     parser::Result::Recovered(output, errors)
@@ -463,7 +341,7 @@ where
     }
 }
 
-/// See [parser::Parser::to_recover()] or [parser::Parser::to_recover()].
+/// See [parser::Parser::to_recover()] or [to_recover()].
 pub struct ToRecover<C> {
     pub(crate) child: C,
 }
@@ -492,6 +370,16 @@ where
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
         self.child.parse_internal(stream, enable_recovery)
+    }
+}
+
+/// Creates a new recovery strategy based on a null parser that always fails.
+/// Useful in conjunction with while_not() and maybe(), when you want to use
+/// recovery combinators rather than parser combinators for the inner recovery
+/// logic.
+pub fn to_recover<O, E>() -> ToRecover<primitive::Fail<O, E>> {
+    ToRecover {
+        child: primitive::fail(),
     }
 }
 
@@ -901,9 +789,7 @@ where
             .recover(stream, started_at, failed_at, errors)
             .or_else(|| {
                 while !stream.token().map(&self.predicate).unwrap_or(true) {
-                    if let Some(result) = self
-                        .inner
-                        .recover(stream, started_at, failed_at, errors)
+                    if let Some(result) = self.inner.recover(stream, started_at, failed_at, errors)
                     {
                         return Some(result);
                     }
@@ -948,10 +834,7 @@ where
             .recover(stream, started_at, failed_at, errors)
             .or_else(|| {
                 stream.attempt(|stream| {
-                    match self
-                        .inner
-                        .recover(stream, started_at, failed_at, errors)
-                    {
+                    match self.inner.recover(stream, started_at, failed_at, errors) {
                         Some(o) => Ok(Some(o)),
                         None => Err(None),
                     }
@@ -1290,7 +1173,7 @@ pub struct Return<C, O> {
     output: O,
 }
 
-impl<'i, I, C> Strategy<'i, I> for Return<C, C::Output>
+impl<'i, I, C> parser::Parser<'i, I> for Return<C, C::Output>
 where
     I: 'i,
     C: Strategy<'i, I>,
@@ -1299,24 +1182,17 @@ where
     type Output = C::Output;
     type Error = C::Error;
 
-    fn recover(
+    fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
-        started_at: &stream::SavedState,
-        failed_at: &mut stream::SavedState,
-        errors: &mut Vec<Self::Error>,
-    ) -> Option<Self::Output> {
-        self.child
-            .recover(stream, started_at, failed_at, errors)
-           .or_else(|| Some(self.output.clone()))
-    }
-
-    fn parse_child(
-        &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
-        self.child.parse_child(stream, enable_recovery)
+        parse_internal_to_complete_strategy(
+            &self.child,
+            |_, _| Some(self.output.clone()),
+            stream,
+            enable_recovery,
+        )
     }
 }
 
@@ -1326,7 +1202,36 @@ pub struct ReturnWith<C, F> {
     output: F,
 }
 
-impl<'i, I, C, F> Strategy<'i, I> for ReturnWith<C, F>
+impl<'i, I, C, F> parser::Parser<'i, I> for ReturnWith<C, F>
+where
+    I: 'i,
+    C: Strategy<'i, I>,
+    F: Fn() -> C::Output,
+{
+    type Output = C::Output;
+    type Error = C::Error;
+
+    fn parse_internal(
+        &self,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, Self::Error> {
+        parse_internal_to_complete_strategy(
+            &self.child,
+            |_, _| Some((self.output)()),
+            stream,
+            enable_recovery,
+        )
+    }
+}
+
+/// See [Strategy::and_return_with_span()].
+pub struct ReturnWithSpan<C, F> {
+    child: C,
+    output: F,
+}
+
+impl<'i, I, C, F> parser::Parser<'i, I> for ReturnWithSpan<C, F>
 where
     I: 'i,
     C: Strategy<'i, I>,
@@ -1337,24 +1242,39 @@ where
     type Output = C::Output;
     type Error = C::Error;
 
-    fn recover(
+    fn parse_internal(
         &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
-        started_at: &stream::SavedState,
-        failed_at: &mut stream::SavedState,
-        errors: &mut Vec<Self::Error>,
-    ) -> Option<Self::Output> {
-        self.child
-            .recover(stream, started_at, failed_at, errors)
-            .or_else(|| Some((self.output)(stream.spanning_back_to(started_at))))
-    }
-
-    fn parse_child(
-        &self,
-        stream: &mut stream::Stream<'i, I, <Self::Error as error::Error<'i, I>>::LocationTracker>,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
         enable_recovery: bool,
     ) -> parser::Result<Self::Output, Self::Error> {
-        self.child.parse_child(stream, enable_recovery)
+        parse_internal_to_complete_strategy(
+            &self.child,
+            |stream, started_at| Some((self.output)(stream.spanning_back_to(started_at))),
+            stream,
+            enable_recovery,
+        )
+    }
+}
+
+/// See [Strategy::or_fail()].
+pub struct OrFail<C> {
+    child: C,
+}
+
+impl<'i, I, C> parser::Parser<'i, I> for OrFail<C>
+where
+    I: 'i,
+    C: Strategy<'i, I>,
+{
+    type Output = C::Output;
+    type Error = C::Error;
+
+    fn parse_internal(
+        &self,
+        stream: &mut stream::Stream<'i, I, <C::Error as error::Error<'i, I>>::LocationTracker>,
+        enable_recovery: bool,
+    ) -> parser::Result<Self::Output, Self::Error> {
+        parse_internal_to_complete_strategy(&self.child, |_, _| None, stream, enable_recovery)
     }
 }
 
@@ -1364,11 +1284,23 @@ mod tests {
 
     #[test]
     fn test_null_recovery() {
-        let parser = just(&'a').with_error::<SimpleError<_>>()
-            .to_recover().do_nothing().and_return(&'a');
-            /*.with_error::<SimpleError<_>>();
+        let parser = just(&'a')
+            .to_recover()
+            .do_nothing()
+            .and_return(&'a')
+            .with_error::<SimpleError<_>>();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);*/
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
     }
 }
