@@ -172,12 +172,9 @@ where
 /// prefix this with [Strategy::find()] to find the expected left delimiter
 /// first, and suffix this with [Strategy::skip()] to skip past the right
 /// delimiter.
-pub fn nested_delimiters<'i, I, E>(types: &'i [(I, I)]) -> impl Fn() -> NestedDelimiters<'i, I, E>
+pub fn nested_delimiters<'i, I, S>(types: &'i [(I, I)]) -> impl Fn() -> NestedDelimiters<'i, I, S>
 where
     I: PartialEq,
-    E: error::Error<'i, I>,
-    <E::LocationTracker as location::Tracker<I>>::Location: Clone,
-    <E::LocationTracker as location::Tracker<I>>::Span: Clone,
 {
     || NestedDelimiters {
         types,

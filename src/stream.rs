@@ -114,11 +114,21 @@ where
 
     /// Restores a location that was previously saved.
     pub fn restore(&mut self, saved_state: &SavedState) {
-        assert!(*saved_state.index <= self.index);
-        let amount = self.index - *saved_state.index;
-        assert!(amount <= self.index_in_buffer);
-        self.index_in_buffer -= amount;
-        self.index -= amount;
+        assert!(*saved_state.index <= self.start_of_buffer() + self.buffer.len());
+        match (*saved_state.index).cmp(&self.index) {
+            std::cmp::Ordering::Less => {
+                let amount = self.index - *saved_state.index;
+                assert!(amount <= self.index_in_buffer);
+                self.index_in_buffer -= amount;
+                self.index -= amount;
+            }
+            std::cmp::Ordering::Equal => (),
+            std::cmp::Ordering::Greater => {
+                let amount = *saved_state.index - self.index;
+                self.index_in_buffer += amount;
+                self.index += amount;
+            }
+        }
     }
 
     /// Executes the given function in such a way that restoring the state of
@@ -148,14 +158,15 @@ where
     fn make_next_available(&mut self) -> bool {
         // Return immediately if the next token is buffered.
         if self.index_in_buffer < self.buffer.len() {
-            return true;
+            // If we're pointing to the last token in the buffer, it may be the
+            // EOF sentinel token. In that case we must return false, to
+            // prevent advance() from trying to advance past it.
+            if self.index_in_buffer == self.buffer.len() - 1 {
+                return !self.source_at_eof;
+            } else {
+                return true;
+            }
         }
-
-        // If the source has previously returned EOF, don't query it again.
-        if self.source_at_eof {
-            return false;
-        }
-
         // Query the source iterator. If there is none, return without doing
         // anything to signal EOF.
         if let Some(next_token) = self.source.next() {

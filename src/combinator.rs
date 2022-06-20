@@ -670,6 +670,7 @@ where
                     } else {
                         // Recovery failed, but note that `errors` may have been
                         // modified by the recovery strategy.
+                        stream.restore(&started_at);
                         parser::Result::Failed(last_token_matched, errors)
                     }
                 }

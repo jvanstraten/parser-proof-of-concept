@@ -9,6 +9,24 @@ use super::scanner;
 use super::stream;
 
 /// Trait for recovery strategies.
+///
+/// Some Chumsky equivalences:
+///  - .recover_with(skip_until(until, fallback)) ->
+///    .to_recover(find(|t| until.contains(t)).and_return_with(fallback))
+///  - .recover_with(skip_until(until, fallback)).consume_end() ->
+///    .to_recover(find(|t| until.contains(t)).skip().and_return_with(fallback))
+///  - .recover_with(skip_until(until, fallback)).skip_start() ->
+///    .to_recover(skip().find(|t| until.contains(t)).and_return_with(fallback))
+///  - .recover_with(skip_then_retry_until(until)) ->
+///    .to_recover(while_not(|t| until.contains(t), retry()).or_fail())
+///  - .recover_with(skip_then_retry_until(until)).consume_end() ->
+///    .to_recover(while_not(|t| until.contains(t), skip().retry()).or_fail())
+///  - .recover_with(skip_then_retry_until(until)).skip_start() ->
+///    .to_recover(skip().while_not(|t| until.contains(t), retry()).or_fail())
+///  - .recover_with(nested_delimiters(start, end, [(la, ra), (lb, rb)], fallback)) ->
+///    .to_recover(find(|t| t == start).scan(nested_delimiters([(start, end), (la, ra), (lb, rb)])).skip().and_return_with(fallback))
+///
+/// More verbose, but much more powerful, and IMO more clear.
 pub trait Recover<'i, I, C>
 where
     I: 'i,
@@ -447,6 +465,9 @@ where
 /// instead serve to modify the stream position or error list. In particular,
 /// the [Nothing] returned by this function does absolutely nothing and fails,
 /// thus simply passing control to combinators applied to it.
+///
+/// Also note that most combinators have a shorthand function for
+/// `attempt_to().do_x()`, so you should rarely have to use this directly.
 pub fn attempt_to<I, C>() -> AttemptTo<I, C> {
     AttemptTo {
         phantom: Default::default(),
@@ -929,6 +950,15 @@ where
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
+}
+
+/// See [IncompleteStrategy::retry()].
+pub fn retry<'i, I, C>() -> Retry<AttemptTo<I, C>>
+where
+    I: 'i,
+    C: parser::Parser<'i, I>,
+{
+    attempt_to().retry()
 }
 
 /// See [IncompleteStrategy::try_to_parse()].
@@ -1674,7 +1704,24 @@ mod tests {
     use crate::prelude::*;
 
     #[test]
-    fn test_null_recovery() {
+    fn test_always_fail() {
+        let parser = just(&'a')
+            .to_recover(attempt_to().do_nothing().or_fail())
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+    }
+
+    #[test]
+    fn test_just_return() {
         let parser = just(&'a')
             .to_recover(just_return(&'a'))
             .with_error::<SimpleError<_>>();
@@ -1691,5 +1738,231 @@ mod tests {
             stream.tail().cloned().collect::<Vec<_>>(),
             vec!['c', 'b', 'a']
         );
+    }
+
+    #[test]
+    fn test_just_return_with() {
+        let parser = just(&'a')
+            .to_recover(just_return_with(|| &'a'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+    }
+
+    #[test]
+    fn test_just_return_with_span() {
+        let parser = just(&'a')
+            .to_recover(just_return_with_span(|span| {
+                assert_eq!(span, 0..0);
+                &'a'
+            }))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert_eq!(stream.next(), Some(ParseResult::Success(&'a')));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+    }
+
+    #[test]
+    fn test_skip() {
+        let parser = just(&'a')
+            .to_recover(skip().and_return_with_span(|span| {
+                assert_eq!(span, 0..1);
+                &'a'
+            }))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'a']);
+    }
+
+    #[test]
+    fn test_restart() {
+        let parser = just(&'a')
+            .to_recover(skip().restart().and_return_with_span(|span| {
+                assert_eq!(span, 0..0);
+                &'a'
+            }))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+    }
+
+    #[test]
+    fn test_seek_to_failed() {
+        let parser = just(&'a')
+            .then(just(&'b'))
+            .to_recover(seek_to_failed().and_return_with_span(|span| {
+                assert_eq!(span, 0..1);
+                (&'a', &'b')
+            }))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['a', 'c', 'b']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered((&'a', &'b'), _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b']);
+    }
+
+    #[test]
+    fn test_skip_if() {
+        let parser = just(&'a')
+            .to_recover(skip_if(|t| t == &'c').and_return(&'a'))
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'a']);
+
+        let mut stream = parser.stream(&['b', 'c', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['b', 'c', 'a']
+        );
+    }
+
+    #[test]
+    fn test_find_retry() {
+        let parser = just(&'a')
+            .to_recover(find(|t| t == &'a').retry().or_fail())
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+
+        let mut stream = parser.stream(&['b', 'a', 'c']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+    }
+
+    #[test]
+    fn test_while_not_retry() {
+        let parser = just(&'a')
+            .to_recover(while_not(|t| t == &'x', retry()).or_fail())
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+
+        let mut stream = parser.stream(&['b', 'a', 'c']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream(&['b', 'x', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['b', 'x', 'a']
+        );
+    }
+
+    #[test]
+    fn test_nested_delimiters() {
+        let parser = just(&'a')
+            .to_recover(
+                scan(nested_delimiters(&[('(', ')'), ('|', '|'), ('[', ']')]))
+                    .skip()
+                    .and_return(&'a'),
+            )
+            .with_error::<SimpleError<_>>();
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'a']);
+
+        let mut stream = parser.stream(&['(', 'c', ')', 'b', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'a']);
+
+        // Recovery behavior is to be as lazy as possible when faced with
+        // deciding if the ] is a typo for ), is missing its [, or
+        // shouldn't be there. So it interprets it as the former.
+        let mut stream = parser.stream(&['(', 'c', ']', ')', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![')', 'a']);
+
+        // An unclosed open captures everything, though.
+        let mut stream = parser.stream(&['(', 'c', 'a']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+
+        // Test safety for equal left and right delimiter.
+        let mut stream = parser.stream(&['|', '|', '|', '|', 'b', 'c']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['|', '|', 'b', 'c']
+        );
+
+        // Test recursion.
+        let mut stream = parser.stream(&['(', '[', ']', ')', 'b', 'c']);
+        assert!(matches!(
+            stream.next(),
+            Some(ParseResult::Recovered(&'a', _))
+        ));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
     }
 }
