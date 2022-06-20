@@ -6,7 +6,7 @@ use super::location;
 /// Trait used to implement the [Strategy::scan()] recovery strategy.
 pub trait Scanner<'i, I, E = error::Simple<I>>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     /// Called by [Strategy::scan()] recovery strategy for each token
@@ -34,6 +34,15 @@ where
 pub struct NestedDelimiters<'i, I, S> {
     types: &'i [(I, I)],
     stack: Vec<(usize, I, S)>,
+}
+
+impl<'i, I: Clone, S: Clone> Clone for NestedDelimiters<'i, I, S> {
+    fn clone(&self) -> Self {
+        Self {
+            types: self.types,
+            stack: self.stack.clone(),
+        }
+    }
 }
 
 impl<'i, I, S> NestedDelimiters<'i, I, S>
@@ -172,7 +181,9 @@ where
 /// prefix this with [Strategy::find()] to find the expected left delimiter
 /// first, and suffix this with [Strategy::skip()] to skip past the right
 /// delimiter.
-pub fn nested_delimiters<'i, I, S>(types: &'i [(I, I)]) -> impl Fn() -> NestedDelimiters<'i, I, S>
+pub fn nested_delimiters<'i, I, S>(
+    types: &'i [(I, I)],
+) -> impl Fn() -> NestedDelimiters<'i, I, S> + Clone
 where
     I: PartialEq,
 {

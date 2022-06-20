@@ -9,6 +9,14 @@ pub struct Empty<E> {
     phantom: std::marker::PhantomData<E>,
 }
 
+impl<E> Clone for Empty<E> {
+    fn clone(&self) -> Self {
+        Self {
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, I, E> parser::Parser<'i, I> for Empty<E>
 where
     I: Clone + 'i,
@@ -27,7 +35,11 @@ where
 }
 
 /// Match nothing; always succeeds. Returns ().
-pub fn empty<E>() -> Empty<E> {
+pub fn empty<'i, I, E>() -> Empty<E>
+where
+    I: Clone + 'i,
+    E: error::Error<'i, I>,
+{
     Empty {
         phantom: Default::default(),
     }
@@ -36,6 +48,14 @@ pub fn empty<E>() -> Empty<E> {
 /// See [none()].
 pub struct None<O, E> {
     phantom: std::marker::PhantomData<(O, E)>,
+}
+
+impl<O, E> Clone for None<O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, I, O, E> parser::Parser<'i, I> for None<O, E>
@@ -57,7 +77,11 @@ where
 
 /// Match nothing; always succeeds. Returns Option::None for the given option
 /// type.
-pub fn none<O, E>() -> None<O, E> {
+pub fn none<'i, I, O, E>() -> None<O, E>
+where
+    I: Clone + 'i,
+    E: error::Error<'i, I>,
+{
     None {
         phantom: Default::default(),
     }
@@ -66,6 +90,14 @@ pub fn none<O, E>() -> None<O, E> {
 /// See [end()].
 pub struct End<E> {
     phantom: std::marker::PhantomData<E>,
+}
+
+impl<E> Clone for End<E> {
+    fn clone(&self) -> Self {
+        Self {
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, I, E> parser::Parser<'i, I> for End<E>
@@ -97,19 +129,29 @@ where
 }
 
 /// Match only end of file. Returns ().
-pub fn end<E>() -> End<E> {
+pub fn end<'i, I, E>() -> End<E>
+where
+    I: Clone + 'i,
+    E: error::Error<'i, I>,
+{
     End {
         phantom: Default::default(),
     }
 }
 
 /// See [just()].
-pub struct Just<I, E>
-where
-    I: PartialEq,
-{
+pub struct Just<I, E> {
     expected: I,
     phantom: std::marker::PhantomData<E>,
+}
+
+impl<I: Clone, E> Clone for Just<I, E> {
+    fn clone(&self) -> Self {
+        Self {
+            expected: self.expected.clone(),
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, I, E> parser::Parser<'i, I> for Just<I, E>
@@ -147,9 +189,10 @@ where
 }
 
 /// Match the given token exactly, returning a reference to the incoming token.
-pub fn just<I, E>(expected: I) -> Just<I, E>
+pub fn just<'i, I, E>(expected: I) -> Just<I, E>
 where
-    I: PartialEq,
+    I: Clone + PartialEq + 'i,
+    E: error::Error<'i, I>,
 {
     Just {
         expected,
@@ -161,6 +204,15 @@ where
 pub struct Filter<F, E> {
     filter: F,
     phantom: std::marker::PhantomData<E>,
+}
+
+impl<F: Clone, E> Clone for Filter<F, E> {
+    fn clone(&self) -> Self {
+        Self {
+            filter: self.filter.clone(),
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, I, F, E> parser::Parser<'i, I> for Filter<F, E>
@@ -201,9 +253,11 @@ where
 
 /// Match the incoming token with the given filter function, returning a
 /// reference to the incoming token if the filter returned true.
-pub fn filter<I, F, E>(filter: F) -> Filter<F, E>
+pub fn filter<'i, I, F, E>(filter: F) -> Filter<F, E>
 where
-    F: Fn(&I) -> bool,
+    I: Clone + 'i,
+    F: Fn(&I) -> bool + Clone,
+    E: error::Error<'i, I>,
 {
     Filter {
         filter,
@@ -215,6 +269,15 @@ where
 pub struct FilterMap<F, E> {
     filter: F,
     phantom: std::marker::PhantomData<E>,
+}
+
+impl<F: Clone, E> Clone for FilterMap<F, E> {
+    fn clone(&self) -> Self {
+        Self {
+            filter: self.filter.clone(),
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'i, I, F, O, E> parser::Parser<'i, I> for FilterMap<F, E>
@@ -252,9 +315,11 @@ where
 
 /// Match the incoming token with the given filter function, returning the
 /// result of the filter function if it returned Some.
-pub fn filter_map<I, F, O, E>(filter: F) -> FilterMap<F, E>
+pub fn filter_map<'i, I, F, O, E>(filter: F) -> FilterMap<F, E>
 where
-    F: Fn(&I) -> Option<O>,
+    I: Clone + 'i,
+    F: Fn(&I) -> Option<O> + Clone,
+    E: error::Error<'i, I>,
 {
     FilterMap {
         filter,
@@ -268,9 +333,18 @@ pub struct Seq<'i, O, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
+impl<'i, O, E> Clone for Seq<'i, O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            expected: self.expected,
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, I, O, E> parser::Parser<'i, I> for Seq<'i, O, E>
 where
-    I: Clone + 'i + PartialEq,
+    I: Clone + PartialEq + 'i,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
@@ -316,8 +390,9 @@ where
 /// exactly, but can't think of any reason why it wouldn't work here, too.
 pub fn seq<'i, I, O, E>(expected: &'i O) -> Seq<'i, O, E>
 where
-    I: Clone + 'i + PartialEq,
+    I: Clone + PartialEq + 'i,
     &'i O: IntoIterator<Item = &'i I>,
+    E: error::Error<'i, I>,
 {
     Seq {
         expected,
@@ -331,9 +406,18 @@ pub struct OneOf<'i, O, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
+impl<'i, O, E> Clone for OneOf<'i, O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            expected: self.expected,
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, I, O, E> parser::Parser<'i, I> for OneOf<'i, O, E>
 where
-    I: Clone + 'i + PartialEq,
+    I: Clone + PartialEq + 'i,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
@@ -374,8 +458,9 @@ where
 /// the incoming token that matched.
 pub fn one_of<'i, I, O, E>(expected: &'i O) -> OneOf<'i, O, E>
 where
-    I: Clone + 'i + PartialEq,
+    I: Clone + PartialEq + 'i,
     &'i O: IntoIterator<Item = &'i I>,
+    E: error::Error<'i, I>,
 {
     OneOf {
         expected,
@@ -389,9 +474,18 @@ pub struct NoneOf<'i, O, E> {
     phantom: std::marker::PhantomData<E>,
 }
 
+impl<'i, O, E> Clone for NoneOf<'i, O, E> {
+    fn clone(&self) -> Self {
+        Self {
+            rejected: self.rejected,
+            phantom: Default::default(),
+        }
+    }
+}
+
 impl<'i, I, O, E> parser::Parser<'i, I> for NoneOf<'i, O, E>
 where
-    I: Clone + 'i + PartialEq,
+    I: Clone + PartialEq + 'i,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
@@ -444,8 +538,9 @@ where
 /// reference to the incoming token that matched.
 pub fn none_of<'i, I, O, E>(rejected: &'i O) -> NoneOf<'i, O, E>
 where
-    I: Clone + 'i + PartialEq,
+    I: Clone + PartialEq + 'i,
     &'i O: IntoIterator<Item = &'i I>,
+    E: error::Error<'i, I>,
 {
     NoneOf {
         rejected,
@@ -459,7 +554,7 @@ mod tests {
 
     #[test]
     fn test_empty() {
-        let parser = empty::<SimpleError<_>>();
+        let parser = empty().with_error::<SimpleError<_>>().clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(())));
         assert_eq!(
@@ -470,7 +565,7 @@ mod tests {
 
     #[test]
     fn test_none() {
-        let parser = none::<usize, SimpleError<_>>();
+        let parser = none::<_, usize, SimpleError<_>>().clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert_eq!(stream.next(), Some(ParseResult::Success(None)));
         assert_eq!(
@@ -481,7 +576,7 @@ mod tests {
 
     #[test]
     fn test_end() {
-        let parser = end::<SimpleError<_>>();
+        let parser = end().with_error::<SimpleError<_>>().clone();
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
         assert_eq!(
@@ -493,7 +588,7 @@ mod tests {
 
     #[test]
     fn test_just() {
-        let parser = just(&'a').with_error::<SimpleError<_>>();
+        let parser = just(&'a').with_error::<SimpleError<_>>().clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -509,7 +604,7 @@ mod tests {
 
     #[test]
     fn test_just_with_copy() {
-        let parser = just('a').with_error::<SimpleError<_>>();
+        let parser = just('a').with_error::<SimpleError<_>>().clone();
 
         let mut stream = parser.stream(['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success('a'))));
@@ -522,7 +617,9 @@ mod tests {
 
     #[test]
     fn test_filter() {
-        let parser = filter(|x: &&char| **x == 'a').with_error::<SimpleError<_>>();
+        let parser = filter(|x: &&char| **x == 'a')
+            .with_error::<SimpleError<_>>()
+            .clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -539,7 +636,8 @@ mod tests {
     #[test]
     fn test_filter_map() {
         let parser = filter_map(|x: &&char| if **x == 'a' { Some('A') } else { None })
-            .with_error::<SimpleError<_>>();
+            .with_error::<SimpleError<_>>()
+            .clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success('A'))));
@@ -555,7 +653,7 @@ mod tests {
 
     #[test]
     fn test_seq() {
-        let parser = seq(&[&'a', &'b']).with_error::<SimpleError<_>>();
+        let parser = seq(&[&'a', &'b']).with_error::<SimpleError<_>>().clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(
@@ -581,7 +679,7 @@ mod tests {
 
     #[test]
     fn test_one_of() {
-        let parser = one_of(&[&'a', &'b']).with_error::<SimpleError<_>>();
+        let parser = one_of(&[&'a', &'b']).with_error::<SimpleError<_>>().clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -601,7 +699,9 @@ mod tests {
 
     #[test]
     fn test_none_of() {
-        let parser = none_of(&[&'a', &'b']).with_error::<SimpleError<_>>();
+        let parser = none_of(&[&'a', &'b'])
+            .with_error::<SimpleError<_>>()
+            .clone();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
