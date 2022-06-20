@@ -474,10 +474,7 @@ pub trait Parser<'i, I: 'i> {
     ///
     /// Note: alters() is kinda like choice() in Chumsky, but I'm too lazy to
     /// write it out that way when I can just copy-paste chain().
-    fn alters<A>(
-        self,
-        other: A,
-    ) -> combinator::Alters<'i, I, Self::Output, Self::Error>
+    fn alters<A>(self, other: A) -> combinator::Alters<'i, I, Self::Output, Self::Error>
     where
         A: Parser<'i, I, Output = Self::Output, Error = Self::Error> + 'i,
         Self: Sized + 'i,
