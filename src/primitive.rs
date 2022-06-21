@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use super::container;
 use super::error;
 use super::parser;
 use super::stream;
@@ -345,7 +346,7 @@ impl<'i, O, E> Clone for Seq<'i, O, E> {
 impl<'i, I, O, E> parser::Parser<'i, I> for Seq<'i, O, E>
 where
     I: Clone + PartialEq + 'i,
-    &'i O: IntoIterator<Item = &'i I>,
+    O: container::Container<'i, I>,
     E: error::Error<'i, I>,
 {
     type Output = &'i O;
@@ -358,9 +359,9 @@ where
     ) -> parser::Result<Self::Output, E> {
         stream.attempt(|stream| {
             // Match concatenation of tokens returned by expected.
-            for expected in self.expected.into_iter() {
+            for expected in self.expected.get_iter() {
                 let found = stream.token();
-                if found == Some(expected) {
+                if found == Some(&expected) {
                     stream.advance();
                 } else {
                     // Construct error message.
@@ -368,7 +369,7 @@ where
                     return Err(parser::Result::Failed(
                         stream.index(),
                         vec![E::expected_found(
-                            [Some(expected.clone())],
+                            [Some(expected)],
                             found,
                             error::At::Span(stream.span()),
                         )],
@@ -391,7 +392,7 @@ where
 pub fn seq<'i, I, O, E>(expected: &'i O) -> Seq<'i, O, E>
 where
     I: Clone + PartialEq + 'i,
-    &'i O: IntoIterator<Item = &'i I>,
+    O: container::Container<'i, I>,
     E: error::Error<'i, I>,
 {
     Seq {
@@ -418,7 +419,7 @@ impl<'i, O, E> Clone for OneOf<'i, O, E> {
 impl<'i, I, O, E> parser::Parser<'i, I> for OneOf<'i, O, E>
 where
     I: Clone + PartialEq + 'i,
-    &'i O: IntoIterator<Item = &'i I>,
+    O: container::Container<'i, I>,
     E: error::Error<'i, I>,
 {
     type Output = I;
@@ -433,10 +434,10 @@ where
         // set of alternatives.
         let found = stream.token();
         if let Some(found) = found {
-            for expected in self.expected.into_iter() {
-                if found == expected {
+            for expected in self.expected.get_iter() {
+                if found == &expected {
                     stream.advance();
-                    return parser::Result::Success(expected.clone());
+                    return parser::Result::Success(expected);
                 }
             }
         }
@@ -446,7 +447,7 @@ where
         parser::Result::Failed(
             stream.index(),
             vec![E::expected_found(
-                self.expected.into_iter().cloned().map(Some),
+                self.expected.get_iter().map(Some),
                 found,
                 error::At::Span(stream.span()),
             )],
@@ -459,7 +460,7 @@ where
 pub fn one_of<'i, I, O, E>(expected: &'i O) -> OneOf<'i, O, E>
 where
     I: Clone + PartialEq + 'i,
-    &'i O: IntoIterator<Item = &'i I>,
+    O: container::Container<'i, I>,
     E: error::Error<'i, I>,
 {
     OneOf {
@@ -486,7 +487,7 @@ impl<'i, O, E> Clone for NoneOf<'i, O, E> {
 impl<'i, I, O, E> parser::Parser<'i, I> for NoneOf<'i, O, E>
 where
     I: Clone + PartialEq + 'i,
-    &'i O: IntoIterator<Item = &'i I>,
+    O: container::Container<'i, I>,
     E: error::Error<'i, I>,
 {
     type Output = I;
@@ -501,8 +502,8 @@ where
         // set of alternatives.
         let found = stream.token();
         if let Some(found) = found {
-            for expected in self.rejected.into_iter() {
-                if found == expected {
+            for expected in self.rejected.get_iter() {
+                if found == &expected {
                     // Construct error message.
                     let found = found.clone();
                     return parser::Result::Failed(
@@ -539,7 +540,7 @@ where
 pub fn none_of<'i, I, O, E>(rejected: &'i O) -> NoneOf<'i, O, E>
 where
     I: Clone + PartialEq + 'i,
-    &'i O: IntoIterator<Item = &'i I>,
+    O: container::Container<'i, I>,
     E: error::Error<'i, I>,
 {
     NoneOf {
@@ -606,11 +607,11 @@ mod tests {
     fn test_just_with_copy() {
         let parser = just('a').with_error::<SimpleError<_>>().clone();
 
-        let mut stream = parser.stream(['a', 'b', 'c']);
+        let mut stream = parser.stream("abc".chars());
         assert!(matches!(stream.next(), Some(ParseResult::Success('a'))));
         assert_eq!(stream.tail().collect::<Vec<_>>(), vec!['b', 'c']);
 
-        let mut stream = parser.stream(['c', 'b', 'a']);
+        let mut stream = parser.stream("cba".chars());
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
         assert_eq!(stream.tail().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
     }
@@ -675,6 +676,43 @@ mod tests {
             stream.tail().cloned().collect::<Vec<_>>(),
             vec!['a', 'c', 'b']
         );
+    }
+
+    #[test]
+    fn test_seq_2() {
+        let parser = seq(&'a').with_error::<SimpleError<_>>().clone();
+
+        let mut stream = parser.stream(&['a', 'b', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(&['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(
+            stream.tail().cloned().collect::<Vec<_>>(),
+            vec!['c', 'b', 'a']
+        );
+
+        let mut stream = parser.stream(&['a', 'c', 'b']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
+        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec!['c', 'b']);
+    }
+
+    #[test]
+    fn test_seq_3() {
+        let parser = seq(&"ab").with_error::<SimpleError<_>>().clone();
+
+        let mut stream = parser.stream("abc".chars());
+        assert!(matches!(stream.next(), Some(ParseResult::Success(&"ab"))));
+        assert_eq!(stream.tail().collect::<Vec<_>>(), vec!['c']);
+
+        let mut stream = parser.stream("cba".chars());
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+
+        let mut stream = parser.stream("acb".chars());
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(1, _))));
+        assert_eq!(stream.tail().collect::<Vec<_>>(), vec!['a', 'c', 'b']);
     }
 
     #[test]

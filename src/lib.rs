@@ -3,6 +3,7 @@
 #[macro_use]
 mod algorithm;
 pub mod combinator;
+pub mod container;
 pub mod error;
 pub mod location;
 pub mod parser;
