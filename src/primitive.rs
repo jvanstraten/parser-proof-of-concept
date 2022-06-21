@@ -11,7 +11,7 @@ pub struct Empty<E> {
 
 impl<'i, I, E> parser::Parser<'i, I> for Empty<E>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     type Output = ();
@@ -40,7 +40,7 @@ pub struct None<O, E> {
 
 impl<'i, I, O, E> parser::Parser<'i, I> for None<O, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     type Output = Option<O>;
@@ -70,7 +70,7 @@ pub struct End<E> {
 
 impl<'i, I, E> parser::Parser<'i, I> for End<E>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     type Output = ();
@@ -88,7 +88,7 @@ where
                 stream.index(),
                 vec![E::expected_found(
                     [None],
-                    stream.token(),
+                    stream.token().cloned(),
                     error::At::Location(stream.location()),
                 )],
             )
@@ -104,20 +104,20 @@ pub fn end<E>() -> End<E> {
 }
 
 /// See [just()].
-pub struct Just<'i, I, E>
+pub struct Just<I, E>
 where
-    I: 'i + PartialEq,
+    I: PartialEq,
 {
-    expected: &'i I,
+    expected: I,
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, I, E> parser::Parser<'i, I> for Just<'i, I, E>
+impl<'i, I, E> parser::Parser<'i, I> for Just<I, E>
 where
-    I: 'i + PartialEq,
+    I: Clone + PartialEq + 'i,
     E: error::Error<'i, I>,
 {
-    type Output = &'i I;
+    type Output = I;
     type Error = E;
 
     fn parse_internal(
@@ -127,16 +127,17 @@ where
     ) -> parser::Result<Self::Output, E> {
         // Match the incoming token.
         let found = stream.token();
-        if found == Some(self.expected) {
+        if found == Some(&self.expected) {
             // Matched successfully, skip past it and return success.
             stream.advance();
-            parser::Result::Success(self.expected)
+            parser::Result::Success(self.expected.clone())
         } else {
             // Construct error message.
+            let found = found.cloned();
             parser::Result::Failed(
                 stream.index(),
                 vec![E::expected_found(
-                    [Some(self.expected)],
+                    [Some(self.expected.clone())],
                     found,
                     error::At::Span(stream.span()),
                 )],
@@ -146,9 +147,9 @@ where
 }
 
 /// Match the given token exactly, returning a reference to the incoming token.
-pub fn just<'i, I, E>(expected: &'i I) -> Just<'i, I, E>
+pub fn just<I, E>(expected: I) -> Just<I, E>
 where
-    I: 'i + PartialEq,
+    I: PartialEq,
 {
     Just {
         expected,
@@ -164,11 +165,11 @@ pub struct Filter<F, E> {
 
 impl<'i, I, F, E> parser::Parser<'i, I> for Filter<F, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     F: Fn(&I) -> bool,
     E: error::Error<'i, I>,
 {
-    type Output = &'i I;
+    type Output = I;
     type Error = E;
 
     fn parse_internal(
@@ -182,12 +183,14 @@ where
             if let Some(found) = found {
                 if (self.filter)(found) {
                     // Matched successfully, skip past it and return success.
+                    let found = found.clone();
                     stream.advance();
                     return Ok(parser::Result::Success(found));
                 }
             }
 
             // Construct error message.
+            let found = found.cloned();
             Err(parser::Result::Failed(
                 stream.index(),
                 vec![E::expected_found([], found, error::At::Span(stream.span()))],
@@ -216,7 +219,7 @@ pub struct FilterMap<F, E> {
 
 impl<'i, I, F, O, E> parser::Parser<'i, I> for FilterMap<F, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     F: Fn(&I) -> Option<O>,
     E: error::Error<'i, I>,
 {
@@ -239,6 +242,7 @@ where
         }
 
         // Construct error message.
+        let found = found.cloned();
         parser::Result::Failed(
             stream.index(),
             vec![E::expected_found([], found, error::At::Span(stream.span()))],
@@ -266,7 +270,7 @@ pub struct Seq<'i, O, E> {
 
 impl<'i, I, O, E> parser::Parser<'i, I> for Seq<'i, O, E>
 where
-    I: 'i + PartialEq,
+    I: Clone + 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
@@ -286,10 +290,11 @@ where
                     stream.advance();
                 } else {
                     // Construct error message.
+                    let found = found.cloned();
                     return Err(parser::Result::Failed(
                         stream.index(),
                         vec![E::expected_found(
-                            [Some(expected)],
+                            [Some(expected.clone())],
                             found,
                             error::At::Span(stream.span()),
                         )],
@@ -311,7 +316,7 @@ where
 /// exactly, but can't think of any reason why it wouldn't work here, too.
 pub fn seq<'i, I, O, E>(expected: &'i O) -> Seq<'i, O, E>
 where
-    I: 'i + PartialEq,
+    I: Clone + 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
 {
     Seq {
@@ -328,11 +333,11 @@ pub struct OneOf<'i, O, E> {
 
 impl<'i, I, O, E> parser::Parser<'i, I> for OneOf<'i, O, E>
 where
-    I: 'i + PartialEq,
+    I: Clone + 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
-    type Output = &'i I;
+    type Output = I;
     type Error = E;
 
     fn parse_internal(
@@ -347,16 +352,17 @@ where
             for expected in self.expected.into_iter() {
                 if found == expected {
                     stream.advance();
-                    return parser::Result::Success(found);
+                    return parser::Result::Success(expected.clone());
                 }
             }
         }
 
         // Construct error message.
+        let found = found.cloned();
         parser::Result::Failed(
             stream.index(),
             vec![E::expected_found(
-                self.expected.into_iter().map(Some),
+                self.expected.into_iter().cloned().map(Some),
                 found,
                 error::At::Span(stream.span()),
             )],
@@ -368,7 +374,7 @@ where
 /// the incoming token that matched.
 pub fn one_of<'i, I, O, E>(expected: &'i O) -> OneOf<'i, O, E>
 where
-    I: 'i + PartialEq,
+    I: Clone + 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
 {
     OneOf {
@@ -385,11 +391,11 @@ pub struct NoneOf<'i, O, E> {
 
 impl<'i, I, O, E> parser::Parser<'i, I> for NoneOf<'i, O, E>
 where
-    I: 'i + PartialEq,
+    I: Clone + 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
     E: error::Error<'i, I>,
 {
-    type Output = &'i I;
+    type Output = I;
     type Error = E;
 
     fn parse_internal(
@@ -404,6 +410,7 @@ where
             for expected in self.rejected.into_iter() {
                 if found == expected {
                     // Construct error message.
+                    let found = found.clone();
                     return parser::Result::Failed(
                         stream.index(),
                         vec![E::expected_found(
@@ -416,6 +423,7 @@ where
             }
 
             // Found a token that isn't rejected.
+            let found = found.clone();
             stream.advance();
             parser::Result::Success(found)
         } else {
@@ -436,7 +444,7 @@ where
 /// reference to the incoming token that matched.
 pub fn none_of<'i, I, O, E>(rejected: &'i O) -> NoneOf<'i, O, E>
 where
-    I: 'i + PartialEq,
+    I: Clone + 'i + PartialEq,
     &'i O: IntoIterator<Item = &'i I>,
 {
     NoneOf {
@@ -480,7 +488,7 @@ mod tests {
             stream.tail().cloned().collect::<Vec<_>>(),
             vec!['a', 'b', 'c']
         );
-        assert_eq!(Parser::<char>::parse(&parser, &[]), Ok(()));
+        assert_eq!(parser.parse(&[]), Ok(()));
     }
 
     #[test]
@@ -501,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_filter() {
-        let parser = filter(|x| *x == 'a').with_error::<SimpleError<_>>();
+        let parser = filter(|x: &&char| **x == 'a').with_error::<SimpleError<_>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -517,8 +525,8 @@ mod tests {
 
     #[test]
     fn test_filter_map() {
-        let parser =
-            filter_map(|x| if *x == 'a' { Some('A') } else { None }).with_error::<SimpleError<_>>();
+        let parser = filter_map(|x: &&char| if **x == 'a' { Some('A') } else { None })
+            .with_error::<SimpleError<_>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success('A'))));
@@ -534,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_seq() {
-        let parser = seq(&['a', 'b']).with_error::<SimpleError<_>>();
+        let parser = seq(&[&'a', &'b']).with_error::<SimpleError<_>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(
@@ -560,7 +568,7 @@ mod tests {
 
     #[test]
     fn test_one_of() {
-        let parser = one_of(&['a', 'b']).with_error::<SimpleError<_>>();
+        let parser = one_of(&[&'a', &'b']).with_error::<SimpleError<_>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Success(&'a'))));
@@ -580,7 +588,7 @@ mod tests {
 
     #[test]
     fn test_none_of() {
-        let parser = none_of(&['a', 'b']).with_error::<SimpleError<_>>();
+        let parser = none_of(&[&'a', &'b']).with_error::<SimpleError<_>>();
 
         let mut stream = parser.stream(&['a', 'b', 'c']);
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));

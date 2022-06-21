@@ -13,7 +13,7 @@ pub struct Recursive<'i, I, O, E> {
 
 impl<'i, I, O, E> Recursive<'i, I, O, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     /// Declare the existence of a recursive parser, allowing it to be used
@@ -39,7 +39,7 @@ where
 
 impl<'i, I, O, E> parser::Parser<'i, I> for Recursive<'i, I, O, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     type Output = O;
@@ -60,7 +60,7 @@ where
 
 pub fn recursive<'i, I, F, C>(f: F) -> Recursive<'i, I, C::Output, C::Error>
 where
-    I: 'i,
+    I: Clone + 'i,
     F: FnOnce(&Recursive<'i, I, C::Output, C::Error>) -> C,
     C: parser::Parser<'i, I> + 'i,
 {

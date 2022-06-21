@@ -10,7 +10,7 @@ use super::stream;
 use std::rc::Rc;
 
 /// See [parser::Parser::boxed()].
-pub struct Boxed<'i, I, O, E = error::Simple<'i, I>> {
+pub struct Boxed<'i, I, O, E = error::Simple<I>> {
     pub(crate) child: Rc<dyn parser::Parser<'i, I, Output = O, Error = E> + 'i>,
 }
 
@@ -24,7 +24,7 @@ impl<'i, I, O, E> Clone for Boxed<'i, I, O, E> {
 
 impl<'i, I, O, E> parser::Parser<'i, I> for Boxed<'i, I, O, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     type Output = O;
@@ -47,7 +47,7 @@ pub struct WithError<C, E> {
 
 impl<'i, I, C> parser::Parser<'i, I> for WithError<C, C::Error>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     type Output = C::Output;
@@ -70,7 +70,7 @@ pub struct To<C, O> {
 
 impl<'i, I, C, O> parser::Parser<'i, I> for To<C, O>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     O: Clone,
 {
@@ -98,7 +98,7 @@ pub struct Some<C> {
 
 impl<'i, I, C> parser::Parser<'i, I> for Some<C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     type Output = Option<C::Output>;
@@ -121,7 +121,7 @@ pub struct Map<C, F> {
 
 impl<'i, I, C, F, O> parser::Parser<'i, I> for Map<C, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(C::Output) -> O,
 {
@@ -147,7 +147,7 @@ pub struct MapWithSpan<C, F> {
 
 impl<'i, I, C, F, O> parser::Parser<'i, I> for MapWithSpan<C, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         C::Output,
@@ -177,7 +177,7 @@ pub struct MapErr<C, F> {
 
 impl<'i, I, C, F, E> parser::Parser<'i, I> for MapErr<C, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(C::Error) -> E,
     E: error::Error<'i, I, LocationTracker = <C::Error as error::Error<'i, I>>::LocationTracker>,
@@ -204,7 +204,7 @@ pub struct MapErrWithSpan<C, F> {
 
 impl<'i, I, C, F, E> parser::Parser<'i, I> for MapErrWithSpan<C, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         C::Error,
@@ -244,7 +244,7 @@ pub struct TryMap<C, F> {
 
 impl<'i, I, C, F, O> parser::Parser<'i, I> for TryMap<C, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         C::Output,
@@ -289,7 +289,7 @@ pub struct Then<A, B> {
 
 impl<'i, I, A, B> parser::Parser<'i, I> for Then<A, B>
 where
-    I: 'i,
+    I: Clone + 'i,
     A: parser::Parser<'i, I>,
     B: parser::Parser<'i, I, Error = A::Error>,
 {
@@ -313,7 +313,7 @@ pub struct ThenIgnore<A, B> {
 
 impl<'i, I, A, B> parser::Parser<'i, I> for ThenIgnore<A, B>
 where
-    I: 'i,
+    I: Clone + 'i,
     A: parser::Parser<'i, I>,
     B: parser::Parser<'i, I, Error = A::Error>,
 {
@@ -337,7 +337,7 @@ pub struct IgnoreThen<A, B> {
 
 impl<'i, I, A, B> parser::Parser<'i, I> for IgnoreThen<A, B>
 where
-    I: 'i,
+    I: Clone + 'i,
     A: parser::Parser<'i, I>,
     B: parser::Parser<'i, I, Error = A::Error>,
 {
@@ -362,7 +362,7 @@ pub struct DelimitedBy<A, B, C> {
 
 impl<'i, I, A, B, C> parser::Parser<'i, I> for DelimitedBy<A, B, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     A: parser::Parser<'i, I>,
     B: parser::Parser<'i, I, Error = A::Error>,
     C: parser::Parser<'i, I, Error = A::Error>,
@@ -394,7 +394,7 @@ pub struct PaddedBy<A, B> {
 
 impl<'i, I, A, B> parser::Parser<'i, I> for PaddedBy<A, B>
 where
-    I: 'i,
+    I: Clone + 'i,
     A: parser::Parser<'i, I>,
     B: parser::Parser<'i, I, Error = A::Error>,
 {
@@ -424,7 +424,7 @@ pub struct Chain<'i, I, O, E> {
 
 impl<'i, I, O, E> parser::Parser<'i, I> for Chain<'i, I, O, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     O: 'i,
     E: error::Error<'i, I>,
 {
@@ -442,7 +442,7 @@ where
 
 impl<'i, I, O, E> Chain<'i, I, O, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     /// Append an additional parser to this chain.
@@ -464,7 +464,7 @@ pub struct Or<A, B> {
 
 impl<'i, I, A, B> parser::Parser<'i, I> for Or<A, B>
 where
-    I: 'i,
+    I: Clone + 'i,
     A: parser::Parser<'i, I>,
     B: parser::Parser<'i, I, Output = A::Output, Error = A::Error>,
 {
@@ -487,7 +487,7 @@ pub struct OrNot<C> {
 
 impl<'i, I, C> parser::Parser<'i, I> for OrNot<C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     type Output = Option<C::Output>;
@@ -514,7 +514,7 @@ pub struct Alters<'i, I, O, E> {
 
 impl<'i, I, O, E> parser::Parser<'i, I> for Alters<'i, I, O, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     O: 'i,
     E: error::Error<'i, I>,
 {
@@ -532,7 +532,7 @@ where
 
 impl<'i, I, O, E> Alters<'i, I, O, E>
 where
-    I: 'i,
+    I: Clone + 'i,
     E: error::Error<'i, I>,
 {
     /// Append an additional parser to this chain.
@@ -558,7 +558,7 @@ pub struct SeparatedBy<A, B> {
 
 impl<'i, I, A, B> parser::Parser<'i, I> for SeparatedBy<A, B>
 where
-    I: 'i,
+    I: Clone + 'i,
     A: parser::Parser<'i, I>,
     B: parser::Parser<'i, I, Error = A::Error>,
 {
@@ -636,7 +636,7 @@ pub struct ToRecover<C, S> {
 
 impl<'i, I, C, S> parser::Parser<'i, I> for ToRecover<C, S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: recovery::Strategy<'i, I, C>,
 {

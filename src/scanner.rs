@@ -4,7 +4,7 @@ use super::error;
 use super::location;
 
 /// Trait used to implement the [Strategy::scan()] recovery strategy.
-pub trait Scanner<'i, I, E = error::Simple<'i, I>>
+pub trait Scanner<'i, I, E = error::Simple<I>>
 where
     I: 'i,
     E: error::Error<'i, I>,
@@ -15,7 +15,7 @@ where
     /// manipulated as needed.
     fn scan(
         &mut self,
-        token: &'i I,
+        token: I,
         span: <E::LocationTracker as location::Tracker<I>>::Span,
         errors: &mut Vec<E>,
     ) -> bool;
@@ -33,15 +33,15 @@ where
 /// See [nested_delimiters()].
 pub struct NestedDelimiters<'i, I, S> {
     types: &'i [(I, I)],
-    stack: Vec<(usize, &'i I, S)>,
+    stack: Vec<(usize, I, S)>,
 }
 
 impl<'i, I, S> NestedDelimiters<'i, I, S>
 where
-    I: PartialEq,
+    I: Clone + PartialEq,
     S: Clone,
 {
-    fn handle_token<E, L>(&mut self, token: &'i I, span: S, errors: &mut Vec<E>)
+    fn handle_token<E, L>(&mut self, token: I, span: S, errors: &mut Vec<E>)
     where
         E: error::Error<'i, I, LocationTracker = L>,
         L: location::Tracker<I, Span = S>,
@@ -50,7 +50,7 @@ where
         // This handles the left = right delimiter case (like || for lambdas
         // in Rust, for example).
         if let Some((index, _, _)) = self.stack.last() {
-            if token == &self.types[*index].1 {
+            if token == self.types[*index].1 {
                 self.stack.pop();
                 return;
             }
@@ -58,7 +58,7 @@ where
 
         // See if this is a left delimiter.
         for (index, (left, _)) in self.types.iter().enumerate() {
-            if token == left {
+            if &token == left {
                 self.stack.push((index, token, span));
                 return;
             }
@@ -68,7 +68,7 @@ where
         // have the *correct* right delimiter, so if this matches something is
         // wrong.
         for (right_index, (_, right)) in self.types.iter().enumerate() {
-            if token == right {
+            if &token == right {
                 // Now we have a decision problem. We can
                 //  1) if there is a delimiter on our stack, treat this right
                 //     delimiter as an incorrect delimiter for that one (pop
@@ -132,14 +132,14 @@ where
 impl<'i, I, E> Scanner<'i, I, E>
     for NestedDelimiters<'i, I, <E::LocationTracker as location::Tracker<I>>::Span>
 where
-    I: PartialEq,
+    I: Clone + PartialEq,
     E: error::Error<'i, I>,
     <E::LocationTracker as location::Tracker<I>>::Location: Clone,
     <E::LocationTracker as location::Tracker<I>>::Span: Clone,
 {
     fn scan(
         &mut self,
-        token: &'i I,
+        token: I,
         span: <E::LocationTracker as location::Tracker<I>>::Span,
         errors: &mut Vec<E>,
     ) -> bool {

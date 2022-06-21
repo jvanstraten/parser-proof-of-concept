@@ -131,7 +131,7 @@ impl<'e, E> Iterator for ErrorIter<'e, E> {
 }
 
 /// Main parser trait.
-pub trait Parser<'i, I: 'i> {
+pub trait Parser<'i, I: Clone + 'i> {
     /// The parse tree type returned by the parser.
     type Output;
 
@@ -166,7 +166,7 @@ pub trait Parser<'i, I: 'i> {
         start_location: <Self::Error as error::Error<'i, I>>::LocationTracker,
     ) -> Result<Self::Output, Self::Error>
     where
-        J: IntoIterator<Item = &'i I>,
+        J: IntoIterator<Item = I>,
         J::IntoIter: 'i,
         Self: Sized,
     {
@@ -182,7 +182,7 @@ pub trait Parser<'i, I: 'i> {
         start_location: <Self::Error as error::Error<'i, I>>::LocationTracker,
     ) -> std::result::Result<Self::Output, Self::Error>
     where
-        J: IntoIterator<Item = &'i I>,
+        J: IntoIterator<Item = I>,
         J::IntoIter: 'i,
         Self: Sized,
     {
@@ -194,7 +194,7 @@ pub trait Parser<'i, I: 'i> {
     /// parse tree and the list of errors produced while parsing.
     fn parse_with_recovery<J>(&self, source: J) -> Result<Self::Output, Self::Error>
     where
-        J: IntoIterator<Item = &'i I>,
+        J: IntoIterator<Item = I>,
         J::IntoIter: 'i,
         <Self::Error as error::Error<'i, I>>::LocationTracker: Default,
         Self: Sized,
@@ -206,7 +206,7 @@ pub trait Parser<'i, I: 'i> {
     /// error.
     fn parse<J>(&self, source: J) -> std::result::Result<Self::Output, Self::Error>
     where
-        J: IntoIterator<Item = &'i I>,
+        J: IntoIterator<Item = I>,
         J::IntoIter: 'i,
         <Self::Error as error::Error<'i, I>>::LocationTracker: Default,
         Self: Sized,
@@ -222,7 +222,7 @@ pub trait Parser<'i, I: 'i> {
         start_location: <Self::Error as error::Error<'i, I>>::LocationTracker,
     ) -> Stream<'i, '_, I, Self>
     where
-        J: IntoIterator<Item = &'i I>,
+        J: IntoIterator<Item = I>,
         J::IntoIter: 'i,
         Self: Sized,
     {
@@ -241,7 +241,7 @@ pub trait Parser<'i, I: 'i> {
     /// input, this will become an infinite loop!
     fn stream<J>(&self, source: J) -> Stream<'i, '_, I, Self>
     where
-        J: IntoIterator<Item = &'i I>,
+        J: IntoIterator<Item = I>,
         J::IntoIter: 'i,
         <Self::Error as error::Error<'i, I>>::LocationTracker: Default,
         Self: Sized,
@@ -534,7 +534,7 @@ pub trait Parser<'i, I: 'i> {
 /// See [Parser::stream()].
 pub struct Stream<'i, 'p, I, P>
 where
-    I: 'i,
+    I: Clone + 'i,
     P: Parser<'i, I>,
 {
     input: stream::Stream<'i, I, <P::Error as error::Error<'i, I>>::LocationTracker>,
@@ -543,7 +543,7 @@ where
 
 impl<'i, 'p, I, P> Iterator for Stream<'i, 'p, I, P>
 where
-    I: 'i,
+    I: Clone + 'i,
     P: Parser<'i, I>,
 {
     type Item = Result<P::Output, P::Error>;
@@ -559,7 +559,7 @@ where
 
 impl<'i, 'p, I, P> Stream<'i, 'p, I, P>
 where
-    I: 'i,
+    I: Clone + 'i,
     P: Parser<'i, I>,
 {
     /// Return an iterator that yields the remaining tokens.
@@ -571,7 +571,7 @@ where
 /// See [Stream::tail()].
 pub struct Tail<'i, I, L>
 where
-    I: 'i,
+    I: Clone + 'i,
     L: location::Tracker<I>,
 {
     input: stream::Stream<'i, I, L>,
@@ -579,13 +579,13 @@ where
 
 impl<'i, I, L> Iterator for Tail<'i, I, L>
 where
-    I: 'i,
+    I: Clone + 'i,
     L: location::Tracker<I>,
 {
-    type Item = &'i I;
+    type Item = I;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let result = self.input.token();
+        let result = self.input.token().cloned();
         self.input.advance();
         result
     }

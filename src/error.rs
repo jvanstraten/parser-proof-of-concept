@@ -64,14 +64,14 @@ where
     /// that was found. None is used for EOF.
     fn expected_found<J>(
         expected: J,
-        found: Option<&'i I>,
+        found: Option<I>,
         at: At<
             <Self::LocationTracker as location::Tracker<I>>::Location,
             <Self::LocationTracker as location::Tracker<I>>::Span,
         >,
     ) -> Self
     where
-        J: IntoIterator<Item = Option<&'i I>>,
+        J: IntoIterator<Item = Option<I>>,
         J::IntoIter: 'i;
 
     /// Adds to the set of expected tokens by means of the given other
@@ -93,7 +93,7 @@ where
 
     /// Constructor for an unmatched left delimiter error.
     fn unmatched_left_delimiter(
-        left_token: &'i I,
+        left_token: I,
         left_span: <Self::LocationTracker as location::Tracker<I>>::Span,
         close_before: At<
             <Self::LocationTracker as location::Tracker<I>>::Location,
@@ -103,7 +103,7 @@ where
 
     /// Constructor for an unmatched right delimiter error.
     fn unmatched_right_delimiter(
-        right_token: &'i I,
+        right_token: I,
         right_span: <Self::LocationTracker as location::Tracker<I>>::Span,
         open_before: At<
             <Self::LocationTracker as location::Tracker<I>>::Location,
@@ -113,9 +113,9 @@ where
 
     /// Constructor for an unmatched delimiter type error.
     fn unmatched_delimiter_type(
-        left_token: &'i I,
+        left_token: I,
         left_span: <Self::LocationTracker as location::Tracker<I>>::Span,
-        right_token: &'i I,
+        right_token: I,
         right_span: <Self::LocationTracker as location::Tracker<I>>::Span,
     ) -> Self;
 
@@ -138,41 +138,37 @@ pub trait Fallback {
 
 /// Simple error message type.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Simple<'i, I, L = location::Simple>
+pub enum Simple<I, L = location::Simple>
 where
     L: location::Tracker<I>,
     I: Eq + std::hash::Hash,
 {
     /// One of .0 was expected, but .1 was found at .2
-    ExpectedFound(
-        HashSet<Option<&'i I>>,
-        Option<&'i I>,
-        At<L::Location, L::Span>,
-    ),
+    ExpectedFound(HashSet<Option<I>>, Option<I>, At<L::Location, L::Span>),
 
     /// Unmatched left delimiter error.
-    UnmatchedLeftDelimiter(&'i I, L::Span, At<L::Location, L::Span>),
+    UnmatchedLeftDelimiter(I, L::Span, At<L::Location, L::Span>),
 
     /// Unmatched right delimiter error.
-    UnmatchedRightDelimiter(&'i I, L::Span, At<L::Location, L::Span>),
+    UnmatchedRightDelimiter(I, L::Span, At<L::Location, L::Span>),
 
     /// Unmatched delimiter type error.
-    UnmatchedDelimiterType(&'i I, L::Span, &'i I, L::Span),
+    UnmatchedDelimiterType(I, L::Span, I, L::Span),
 
     /// Custom error message.
     Custom(String, At<L::Location, L::Span>),
 }
 
-impl<'i, I, L> Error<'i, I> for Simple<'i, I, L>
+impl<'i, I, L> Error<'i, I> for Simple<I, L>
 where
-    I: 'i + Eq + std::hash::Hash,
+    I: 'i + Eq + std::hash::Hash + Clone,
     L: location::Tracker<I>,
 {
     type LocationTracker = L;
 
-    fn expected_found<J>(expected: J, found: Option<&'i I>, at: At<L::Location, L::Span>) -> Self
+    fn expected_found<J>(expected: J, found: Option<I>, at: At<L::Location, L::Span>) -> Self
     where
-        J: IntoIterator<Item = Option<&'i I>>,
+        J: IntoIterator<Item = Option<I>>,
         J::IntoIter: 'i,
     {
         Self::ExpectedFound(expected.into_iter().collect(), found, at)
@@ -180,7 +176,7 @@ where
 
     fn merge_expected_found(&mut self, other: &Self) {
         if let (Self::ExpectedFound(dest, _, _), Self::ExpectedFound(src, _, _)) = (self, other) {
-            dest.extend(src)
+            dest.extend(src.iter().cloned())
         }
     }
 
@@ -199,7 +195,7 @@ where
     }
 
     fn unmatched_left_delimiter(
-        left_token: &'i I,
+        left_token: I,
         left_span: L::Span,
         close_before: At<L::Location, L::Span>,
     ) -> Self {
@@ -207,7 +203,7 @@ where
     }
 
     fn unmatched_right_delimiter(
-        right_token: &'i I,
+        right_token: I,
         right_span: L::Span,
         open_before: At<L::Location, L::Span>,
     ) -> Self {
@@ -215,9 +211,9 @@ where
     }
 
     fn unmatched_delimiter_type(
-        left_token: &'i I,
+        left_token: I,
         left_span: L::Span,
-        right_token: &'i I,
+        right_token: I,
         right_span: L::Span,
     ) -> Self {
         Simple::UnmatchedDelimiterType(left_token, left_span, right_token, right_span)
@@ -228,7 +224,7 @@ where
     }
 }
 
-impl<'i, I, L> Fallback for Simple<'i, I, L>
+impl<'i, I, L> Fallback for Simple<I, L>
 where
     L: location::Tracker<I>,
     I: Eq + std::hash::Hash,
@@ -238,7 +234,7 @@ where
     }
 }
 
-impl<'i, I, L> std::fmt::Display for Simple<'i, I, L>
+impl<'i, I, L> std::fmt::Display for Simple<I, L>
 where
     L: location::Tracker<I>,
     I: std::fmt::Display + Eq + std::hash::Hash,

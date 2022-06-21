@@ -80,7 +80,7 @@ pub fn concatenate<'i, 'p, I, C, O, E>(
 ) -> parser::Result<Vec<O>, E>
 where
     'i: 'p,
-    I: 'i,
+    I: Clone + 'i,
     C: IntoIterator<Item = &'p combinator::Boxed<'i, I, O, E>>,
     O: 'i,
     E: error::Error<'i, I> + 'p,
@@ -163,7 +163,7 @@ pub fn repeat<'i, 'p, I, C, S>(
 ) -> parser::Result<Vec<C::Output>, C::Error>
 where
     'i: 'p,
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: parser::Parser<'i, I, Error = C::Error>,
 {
@@ -375,7 +375,7 @@ pub fn alternate<'i, 'p, I, C, O, E>(
 ) -> parser::Result<O, E>
 where
     'i: 'p,
-    I: 'i,
+    I: Clone + 'i,
     C: IntoIterator<Item = &'p combinator::Boxed<'i, I, O, E>>,
     O: 'i,
     E: error::Error<'i, I> + 'p,

@@ -29,7 +29,7 @@ use super::stream;
 /// More verbose, but much more powerful, and IMO more clear.
 pub trait Recover<'i, I, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     /// Called when the given `parser` has failed to parse the input in
@@ -63,7 +63,7 @@ where
 /// Trait for complete recovery strategies.
 pub trait Strategy<'i, I, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     Self: Recover<'i, I, C>,
 {
@@ -73,7 +73,7 @@ where
 /// combinators to complete.
 pub trait IncompleteStrategy<'i, I, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     Self: Recover<'i, I, C>,
 {
@@ -428,7 +428,7 @@ pub struct AttemptTo<I, C> {
 
 impl<'i, I, C> Recover<'i, I, C> for AttemptTo<I, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     fn recover(
@@ -445,7 +445,7 @@ where
 
 impl<'i, I, C> IncompleteStrategy<'i, I, C> for AttemptTo<I, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
 }
@@ -481,7 +481,7 @@ pub struct Restart<S> {
 
 impl<'i, I, C, S> Recover<'i, I, C> for Restart<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -504,7 +504,7 @@ where
 
 impl<'i, I, C, S> IncompleteStrategy<'i, I, C> for Restart<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -517,7 +517,7 @@ pub struct SeekToFailed<S> {
 
 impl<'i, I, C, S> Recover<'i, I, C> for SeekToFailed<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -540,7 +540,7 @@ where
 
 impl<'i, I, C, S> IncompleteStrategy<'i, I, C> for SeekToFailed<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -549,7 +549,7 @@ where
 /// See [IncompleteStrategy::seek_to_failed()].
 pub fn seek_to_failed<'i, I, C>() -> SeekToFailed<AttemptTo<I, C>>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     attempt_to().seek_to_failed()
@@ -562,7 +562,7 @@ pub struct Skip<S> {
 
 impl<'i, I, C, S> Recover<'i, I, C> for Skip<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -585,7 +585,7 @@ where
 
 impl<'i, I, C, S> IncompleteStrategy<'i, I, C> for Skip<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -594,7 +594,7 @@ where
 /// See [IncompleteStrategy::skip()].
 pub fn skip<'i, I, C>() -> Skip<AttemptTo<I, C>>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     attempt_to().skip()
@@ -608,7 +608,7 @@ pub struct SkipIf<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for SkipIf<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(&I) -> bool,
@@ -624,7 +624,7 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
-                if stream.token().map(&self.predicate).unwrap_or(false) {
+                if stream.token().map(|t| (self.predicate)(t)).unwrap_or(false) {
                     stream.advance();
                 }
                 None
@@ -634,7 +634,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for SkipIf<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(&I) -> bool,
@@ -644,7 +644,7 @@ where
 /// See [IncompleteStrategy::skip_if()].
 pub fn skip_if<'i, I, C, F>(predicate: F) -> SkipIf<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(&I) -> bool,
 {
@@ -659,7 +659,7 @@ pub struct Find<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for Find<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(&I) -> bool,
@@ -675,7 +675,7 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
-                while !stream.token().map(&self.predicate).unwrap_or(true) {
+                while !stream.token().map(|t| (self.predicate)(t)).unwrap_or(true) {
                     stream.advance();
                 }
                 None
@@ -685,7 +685,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for Find<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(&I) -> bool,
@@ -695,7 +695,7 @@ where
 /// See [IncompleteStrategy::find()].
 pub fn find<'i, I, C, F>(predicate: F) -> Find<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(&I) -> bool,
 {
@@ -710,7 +710,7 @@ pub struct Scan<S, F> {
 
 impl<'i, I, C, S, F, T> Recover<'i, I, C> for Scan<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn() -> T,
@@ -729,7 +729,10 @@ where
             .or_else(|| {
                 let mut seeker = (self.factory)();
                 while match stream.token() {
-                    Some(token) => !seeker.scan(token, stream.span(), errors),
+                    Some(token) => {
+                        let token = token.clone();
+                        !seeker.scan(token, stream.span(), errors)
+                    }
                     None => {
                         seeker.eof(stream.location(), errors);
                         false
@@ -744,7 +747,7 @@ where
 
 impl<'i, I, C, S, F, T> IncompleteStrategy<'i, I, C> for Scan<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn() -> T,
@@ -755,7 +758,7 @@ where
 /// See [IncompleteStrategy::scan()].
 pub fn scan<'i, I, C, F, T>(factory: F) -> Scan<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn() -> T,
     T: scanner::Scanner<'i, I, C::Error>,
@@ -771,7 +774,7 @@ pub struct Maybe<S, T> {
 
 impl<'i, I, C, S, T> Recover<'i, I, C> for Maybe<S, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     T: IncompleteStrategy<'i, I, C>,
@@ -802,7 +805,7 @@ where
 
 impl<'i, I, C, S, T> IncompleteStrategy<'i, I, C> for Maybe<S, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     T: IncompleteStrategy<'i, I, C>,
@@ -812,7 +815,7 @@ where
 /// See [IncompleteStrategy::maybe()].
 pub fn maybe<'i, I, C, T>(inner: T) -> Maybe<AttemptTo<I, C>, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     T: IncompleteStrategy<'i, I, C>,
 {
@@ -828,7 +831,7 @@ pub struct WhileNot<S, F, T> {
 
 impl<'i, I, C, S, F, T> Recover<'i, I, C> for WhileNot<S, F, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(&I) -> bool,
@@ -845,7 +848,7 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
-                while !stream.token().map(&self.predicate).unwrap_or(true) {
+                while !stream.token().map(|t| (self.predicate)(t)).unwrap_or(true) {
                     if let Some(result) = self
                         .inner
                         .recover(parser, stream, started_at, failed_at, errors)
@@ -861,7 +864,7 @@ where
 
 impl<'i, I, C, S, F, T> IncompleteStrategy<'i, I, C> for WhileNot<S, F, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(&I) -> bool,
@@ -872,7 +875,7 @@ where
 /// See [IncompleteStrategy::while_not()].
 pub fn while_not<'i, I, C, F, T>(predicate: F, inner: T) -> WhileNot<AttemptTo<I, C>, F, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(&I) -> bool,
     T: IncompleteStrategy<'i, I, C>,
@@ -911,7 +914,7 @@ impl<S> Retry<S> {
 
 impl<'i, I, C, S> Recover<'i, I, C> for Retry<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -946,7 +949,7 @@ where
 
 impl<'i, I, C, S> IncompleteStrategy<'i, I, C> for Retry<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -955,7 +958,7 @@ where
 /// See [IncompleteStrategy::retry()].
 pub fn retry<'i, I, C>() -> Retry<AttemptTo<I, C>>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     attempt_to().retry()
@@ -993,7 +996,7 @@ impl<S, T> TryToParse<S, T> {
 
 impl<'i, I, C, S, T> Recover<'i, I, C> for TryToParse<S, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     T: parser::Parser<'i, I, Output = C::Output, Error = C::Error>,
@@ -1029,7 +1032,7 @@ where
 
 impl<'i, I, C, S, T> IncompleteStrategy<'i, I, C> for TryToParse<S, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     T: parser::Parser<'i, I, Output = C::Output, Error = C::Error>,
@@ -1039,7 +1042,7 @@ where
 /// See [IncompleteStrategy::try_to_parse()].
 pub fn try_to_parse<'i, I, C, T>(parser: T) -> TryToParse<AttemptTo<I, C>, T>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     T: parser::Parser<'i, I, Output = C::Output, Error = C::Error>,
 {
@@ -1054,7 +1057,7 @@ pub struct PushError<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for PushError<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn() -> C::Error,
@@ -1078,7 +1081,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for PushError<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn() -> C::Error,
@@ -1088,7 +1091,7 @@ where
 /// See [IncompleteStrategy::push_error()].
 pub fn push_error<'i, I, C, F>(factory: F) -> PushError<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn() -> C::Error,
 {
@@ -1103,7 +1106,7 @@ pub struct PushErrorHere<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for PushErrorHere<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1129,7 +1132,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for PushErrorHere<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1141,7 +1144,7 @@ where
 /// See [IncompleteStrategy::push_error_here()].
 pub fn push_error_here<'i, I, C, F>(factory: F) -> PushErrorHere<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Location,
@@ -1158,7 +1161,7 @@ pub struct PushErrorUpToHere<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for PushErrorUpToHere<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1184,7 +1187,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for PushErrorUpToHere<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1196,7 +1199,7 @@ where
 /// See [IncompleteStrategy::push_error_up_to_here()].
 pub fn push_error_up_to_here<'i, I, C, F>(factory: F) -> PushErrorUpToHere<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
@@ -1213,7 +1216,7 @@ pub struct PushErrorForToken<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for PushErrorForToken<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1232,7 +1235,8 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
-                errors.push((self.factory)(stream.token(), stream.span()));
+                let span = stream.span();
+                errors.push((self.factory)(stream.token(), span));
                 None
             })
     }
@@ -1240,7 +1244,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for PushErrorForToken<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1253,7 +1257,7 @@ where
 /// See [IncompleteStrategy::push_error_for_token()].
 pub fn push_error_for_token<'i, I, C, F>(factory: F) -> PushErrorForToken<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         Option<&I>,
@@ -1271,7 +1275,7 @@ pub struct UpdateErrors<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for UpdateErrors<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(&mut Vec<C::Error>),
@@ -1295,7 +1299,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for UpdateErrors<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(&mut Vec<C::Error>),
@@ -1305,7 +1309,7 @@ where
 /// See [IncompleteStrategy::update_errors()].
 pub fn update_errors<'i, I, C, F>(updater: F) -> UpdateErrors<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(&mut Vec<C::Error>),
 {
@@ -1320,7 +1324,7 @@ pub struct UpdateErrorsHere<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for UpdateErrorsHere<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1347,7 +1351,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for UpdateErrorsHere<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1360,7 +1364,7 @@ where
 /// See [IncompleteStrategy::update_errors_here()].
 pub fn update_errors_here<'i, I, C, F>(updater: F) -> UpdateErrorsHere<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         &mut Vec<C::Error>,
@@ -1378,7 +1382,7 @@ pub struct UpdateErrorsUpToHere<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for UpdateErrorsUpToHere<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1405,7 +1409,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for UpdateErrorsUpToHere<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1418,7 +1422,7 @@ where
 /// See [IncompleteStrategy::update_errors_up_to_here()].
 pub fn update_errors_up_to_here<'i, I, C, F>(updater: F) -> UpdateErrorsUpToHere<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         &mut Vec<C::Error>,
@@ -1436,7 +1440,7 @@ pub struct UpdateErrorsForToken<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for UpdateErrorsForToken<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1456,7 +1460,8 @@ where
         self.child
             .recover(parser, stream, started_at, failed_at, errors)
             .or_else(|| {
-                (self.updater)(errors, stream.token(), stream.span());
+                let span = stream.span();
+                (self.updater)(errors, stream.token(), span);
                 None
             })
     }
@@ -1464,7 +1469,7 @@ where
 
 impl<'i, I, C, S, F> IncompleteStrategy<'i, I, C> for UpdateErrorsForToken<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1478,7 +1483,7 @@ where
 /// See [IncompleteStrategy::update_errors_for_token()].
 pub fn update_errors_for_token<'i, I, C, F>(updater: F) -> UpdateErrorsForToken<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         &mut Vec<C::Error>,
@@ -1492,7 +1497,7 @@ where
 /// See [IncompleteStrategy::boxed()].
 pub struct Boxed<'i, I, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     pub(crate) strategy: Box<dyn IncompleteStrategy<'i, I, C> + 'i>,
@@ -1500,7 +1505,7 @@ where
 
 impl<'i, I, C> Recover<'i, I, C> for Boxed<'i, I, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
     fn recover(
@@ -1518,7 +1523,7 @@ where
 
 impl<'i, I, C> IncompleteStrategy<'i, I, C> for Boxed<'i, I, C>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
 {
 }
@@ -1531,7 +1536,7 @@ pub struct Return<S, O> {
 
 impl<'i, I, C, S> Recover<'i, I, C> for Return<S, C::Output>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     C::Output: Clone,
     S: IncompleteStrategy<'i, I, C>,
@@ -1552,7 +1557,7 @@ where
 
 impl<'i, I, C, S> Strategy<'i, I, C> for Return<S, C::Output>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     C::Output: Clone,
     S: IncompleteStrategy<'i, I, C>,
@@ -1562,7 +1567,7 @@ where
 /// See [IncompleteStrategy::and_return()].
 pub fn just_return<'i, I, C>(output: C::Output) -> Return<AttemptTo<I, C>, C::Output>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     C::Output: Clone,
 {
@@ -1577,7 +1582,7 @@ pub struct ReturnWith<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for ReturnWith<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn() -> C::Output,
@@ -1598,7 +1603,7 @@ where
 
 impl<'i, I, C, S, F> Strategy<'i, I, C> for ReturnWith<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn() -> C::Output,
@@ -1608,7 +1613,7 @@ where
 /// See [IncompleteStrategy::and_return_with()].
 pub fn just_return_with<'i, I, C, F>(output: F) -> ReturnWith<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn() -> C::Output,
 {
@@ -1623,7 +1628,7 @@ pub struct ReturnWithSpan<S, F> {
 
 impl<'i, I, C, S, F> Recover<'i, I, C> for ReturnWithSpan<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1646,7 +1651,7 @@ where
 
 impl<'i, I, C, S, F> Strategy<'i, I, C> for ReturnWithSpan<S, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
     F: Fn(
@@ -1658,7 +1663,7 @@ where
 /// See [IncompleteStrategy::and_return_with_span()].
 pub fn just_return_with_span<'i, I, C, F>(output: F) -> ReturnWithSpan<AttemptTo<I, C>, F>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     F: Fn(
         <<C::Error as error::Error<'i, I>>::LocationTracker as location::Tracker<I>>::Span,
@@ -1674,7 +1679,7 @@ pub struct OrFail<S> {
 
 impl<'i, I, C, S> Recover<'i, I, C> for OrFail<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -1693,7 +1698,7 @@ where
 
 impl<'i, I, C, S> Strategy<'i, I, C> for OrFail<S>
 where
-    I: 'i,
+    I: Clone + 'i,
     C: parser::Parser<'i, I>,
     S: IncompleteStrategy<'i, I, C>,
 {
@@ -1838,7 +1843,7 @@ mod tests {
     #[test]
     fn test_skip_if() {
         let parser = just(&'a')
-            .to_recover(skip_if(|t| t == &'c').and_return(&'a'))
+            .to_recover(skip_if(|t: &&char| **t == 'c').and_return(&'a'))
             .with_error::<SimpleError<_>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
@@ -1861,7 +1866,7 @@ mod tests {
     #[test]
     fn test_find_retry() {
         let parser = just(&'a')
-            .to_recover(find(|t| t == &'a').retry().or_fail())
+            .to_recover(find(|t: &&char| **t == 'a').retry().or_fail())
             .with_error::<SimpleError<_>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
@@ -1881,7 +1886,7 @@ mod tests {
     #[test]
     fn test_while_not_retry() {
         let parser = just(&'a')
-            .to_recover(while_not(|t| t == &'x', retry()).or_fail())
+            .to_recover(while_not(|t: &&char| **t == 'x', retry()).or_fail())
             .with_error::<SimpleError<_>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);
         assert!(matches!(
@@ -1909,9 +1914,13 @@ mod tests {
     fn test_nested_delimiters() {
         let parser = just(&'a')
             .to_recover(
-                scan(nested_delimiters(&[('(', ')'), ('|', '|'), ('[', ']')]))
-                    .skip()
-                    .and_return(&'a'),
+                scan(nested_delimiters(&[
+                    (&'(', &')'),
+                    (&'|', &'|'),
+                    (&'[', &']'),
+                ]))
+                .skip()
+                .and_return(&'a'),
             )
             .with_error::<SimpleError<_>>();
         let mut stream = parser.stream(&['c', 'b', 'a']);

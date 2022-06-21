@@ -16,7 +16,7 @@ where
     L: location::Tracker<I>,
 {
     /// Iterator representing the source of the tokens.
-    source: Box<dyn Iterator<Item = &'i I> + 'i>,
+    source: Box<dyn Iterator<Item = I> + 'i>,
 
     /// Whether the source iterator has returned None.
     source_at_eof: bool,
@@ -29,7 +29,7 @@ where
     /// was most recently consumed from the iterator; the front is the oldest
     /// token that we may still have to backtrack to (or perhaps something
     /// older).
-    buffer: VecDeque<(Option<&'i I>, L)>,
+    buffer: VecDeque<(Option<I>, L)>,
 
     /// The index of the next token relative to the front of the buffer.
     index_in_buffer: usize,
@@ -51,7 +51,7 @@ where
     /// location.
     pub fn new<J>(source: J) -> Self
     where
-        J: IntoIterator<Item = &'i I>,
+        J: IntoIterator<Item = I>,
         J::IntoIter: 'i,
         L: Default,
     {
@@ -69,7 +69,7 @@ where
     /// Constructs a token stream from an iterable and an initial start location.
     pub fn new_with_location<J>(source: J, start_location: L) -> Self
     where
-        J: IntoIterator<Item = &'i I>,
+        J: IntoIterator<Item = I>,
         J::IntoIter: 'i,
     {
         Self {
@@ -175,7 +175,7 @@ where
             let next_location = self.source_location.clone();
 
             // Advance the location tracker accordingly.
-            self.source_location.advance(next_token);
+            self.source_location.advance(&next_token);
 
             // If the buffer is at capacity, see if we can drop some stuff.
             if self.buffer.len() == self.buffer.capacity() {
@@ -221,18 +221,18 @@ where
 
     /// Returns a reference to the next token (or None for EOF) and its start
     /// location, without advancing the current location.
-    pub fn token(&mut self) -> Option<&'i I> {
+    pub fn token(&mut self) -> Option<&I> {
         // Ensure that the next token is in the buffer.
         self.make_next_available();
 
         // Return the next token.
-        self.buffer[self.index_in_buffer].0
+        self.buffer[self.index_in_buffer].0.as_ref()
     }
 
     /// Returns a reference to the token (or None for EOF) at the given saved
     /// position. The index must have been created using save(), or this may
     /// panic (the token may not be available yet or anymore).
-    pub fn token_at(&mut self, saved_state: &SavedState) -> Option<&'i I> {
+    pub fn token_at(&mut self, saved_state: &SavedState) -> Option<&I> {
         // If the index is the next token, reduce to token().
         if *saved_state.index == self.index {
             return self.token();
@@ -240,7 +240,9 @@ where
 
         // Return the requested token from the buffer.
         assert!(*saved_state.index >= self.start_of_buffer());
-        self.buffer[*saved_state.index - self.start_of_buffer()].0
+        self.buffer[*saved_state.index - self.start_of_buffer()]
+            .0
+            .as_ref()
     }
 
     /// Returns the token index of the next token.
