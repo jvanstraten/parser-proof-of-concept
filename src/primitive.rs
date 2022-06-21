@@ -508,6 +508,19 @@ mod tests {
     }
 
     #[test]
+    fn test_just_with_copy() {
+        let parser = just('a').with_error::<SimpleError<_>>();
+
+        let mut stream = parser.stream(['a', 'b', 'c']);
+        assert!(matches!(stream.next(), Some(ParseResult::Success('a'))));
+        assert_eq!(stream.tail().collect::<Vec<_>>(), vec!['b', 'c']);
+
+        let mut stream = parser.stream(['c', 'b', 'a']);
+        assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
+        assert_eq!(stream.tail().collect::<Vec<_>>(), vec!['c', 'b', 'a']);
+    }
+
+    #[test]
     fn test_filter() {
         let parser = filter(|x: &&char| **x == 'a').with_error::<SimpleError<_>>();
 
