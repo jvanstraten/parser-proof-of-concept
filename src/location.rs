@@ -5,15 +5,48 @@
 /// parser tracks on its own). Note however that it's cloned a lot, so if
 /// you want to track lots of immutable stuff (like a source filename),
 /// consider sticking it in an Rc. The default is simply empty.
-pub trait Tracker<I>: Clone {
+///
+/// For the tracking, the token stream manager will do the following things
+/// for every incoming token:
+///
+///  - call goto() on the incoming token;
+///  - clone the tracker to save the start location of the token;
+///  - call advance() on the incoming token.
+///
+/// It will also track the token index on its own as a usize, starting from 0.
+/// Whenever it needs a completed location or span object, it calls location()
+/// or span() respectively, also providing this tracked token index.
+///
+/// In the simplest form (see [Simple]), the tracker is an empty object, the
+/// location object is simply the index usize, and the span object is a
+/// [std::ops::Range<usize>]. This makes the tracker cloning process
+/// essentially free and allows any type of input token to be used, but things
+/// like row/column information are not tracked. [Rich] provides a more complex
+/// tracker, primarily intended as an example, that does include this
+/// information.
+///
+/// When you implement your own tracker, usually you'll only have to implement
+/// either goto() or advance(), and usually it'll be the latter. The former is
+/// primarily useful if your tokens actually come from a tokenizer and the
+/// token type includes span information; in this case, you can use goto() to
+/// copy the span into the tracker and construct accurate locations and spans
+/// from that.
+pub trait Tracker<I>
+where
+    I: ?Sized,
+    Self: Clone,
+{
     /// The type for a single location.
     type Location: PartialEq;
 
     /// The type for spans between two of these locations.
     type Span: PartialEq;
 
+    /// Advances the source location to the start of the given token.
+    fn goto(&mut self, _token: &I) {}
+
     /// Advances the source location past the given token.
-    fn advance(&mut self, token: &I);
+    fn advance(&mut self, _token: &I) {}
 
     /// Constructs a location object from the current location data in the
     /// tracker and the given corresponding token index.
@@ -28,11 +61,9 @@ pub trait Tracker<I>: Clone {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Simple();
 
-impl<I> Tracker<I> for Simple {
+impl<I: ?Sized> Tracker<I> for Simple {
     type Location = usize;
     type Span = std::ops::Range<usize>;
-
-    fn advance(&mut self, _token: &I) {}
 
     fn location(&self, index: usize) -> Self::Location {
         index
@@ -61,7 +92,7 @@ pub struct Rich<I: ?Sized, F: Fn(&I) -> &str> {
     phantom: std::marker::PhantomData<I>,
 }
 
-impl<I, F: Fn(&I) -> &str> Clone for Rich<I, F> {
+impl<I: ?Sized, F: Fn(&I) -> &str> Clone for Rich<I, F> {
     fn clone(&self) -> Self {
         Self {
             immutable: self.immutable.clone(),
@@ -73,7 +104,7 @@ impl<I, F: Fn(&I) -> &str> Clone for Rich<I, F> {
     }
 }
 
-impl<I, F: Fn(&I) -> &str> Rich<I, F> {
+impl<I: ?Sized, F: Fn(&I) -> &str> Rich<I, F> {
     pub fn new<S: ToString>(source_file: S, converter: F) -> Self {
         Self {
             immutable: std::rc::Rc::new((std::rc::Rc::new(source_file.to_string()), converter)),
@@ -85,7 +116,7 @@ impl<I, F: Fn(&I) -> &str> Rich<I, F> {
     }
 }
 
-impl<I, F: Fn(&I) -> &str> Tracker<I> for Rich<I, F> {
+impl<I: ?Sized, F: Fn(&I) -> &str> Tracker<I> for Rich<I, F> {
     type Location = RichLocation;
     type Span = RichSpan;
 
@@ -143,6 +174,17 @@ pub struct RichOffset {
     pub index: usize,
 }
 
+impl Default for RichOffset {
+    fn default() -> Self {
+        Self {
+            row: 1,
+            column: 1,
+            offset: 0,
+            index: 0,
+        }
+    }
+}
+
 impl std::fmt::Display for RichOffset {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.row, self.column)
@@ -151,7 +193,7 @@ impl std::fmt::Display for RichOffset {
 
 /// A "rich" source location, including filename, row, column, byte offset, and
 /// token index.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct RichLocation {
     pub filename: std::rc::Rc<String>,
     pub offset: RichOffset,
@@ -166,7 +208,7 @@ impl std::fmt::Display for RichLocation {
 /// A "rich" source span, including filename, inclusive start offset, and
 /// exclusive end offset, where both offsets include row, column, byte offset,
 /// and token index.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct RichSpan {
     pub filename: std::rc::Rc<String>,
     pub from: RichOffset,

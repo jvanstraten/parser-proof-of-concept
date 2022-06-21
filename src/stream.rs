@@ -13,7 +13,7 @@ pub struct SavedState {
 pub struct Stream<'i, H, I, L>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     L: location::Tracker<I>,
 {
     phantom: std::marker::PhantomData<I>,
@@ -48,7 +48,7 @@ where
 impl<'i, H, I, L> Stream<'i, H, I, L>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     L: location::Tracker<I>,
 {
     /// Constructs a token stream from an iterable, using the default start

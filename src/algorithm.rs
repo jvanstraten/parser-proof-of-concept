@@ -83,7 +83,7 @@ pub fn concatenate<'i, 'p, H, I, C, O, E>(
 where
     'i: 'p,
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: IntoIterator<Item = &'p combinator::Boxed<'i, H, I, O, E>>,
     O: 'i,
     E: error::Error<'i, H, I> + 'p,
@@ -172,7 +172,7 @@ pub fn repeat<'i, 'p, H, I, C, S>(
 where
     'i: 'p,
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: parser::Parser<'i, H, I, Error = C::Error>,
 {
@@ -385,7 +385,7 @@ pub fn alternate<'i, 'p, H, I, C, O, E>(
 where
     'i: 'p,
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: IntoIterator<Item = &'p combinator::Boxed<'i, H, I, O, E>>,
     O: 'i,
     E: error::Error<'i, H, I> + 'p,

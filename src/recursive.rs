@@ -7,12 +7,12 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub struct Recursive<'i, H, I, O, E> {
+pub struct Recursive<'i, H, I: ?Sized, O, E> {
     #[allow(clippy::type_complexity)]
     inner: Rc<RefCell<Option<combinator::Boxed<'i, H, I, O, E>>>>,
 }
 
-impl<'i, H, I, O, E> Clone for Recursive<'i, H, I, O, E> {
+impl<'i, H, I: ?Sized, O, E> Clone for Recursive<'i, H, I, O, E> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -23,7 +23,7 @@ impl<'i, H, I, O, E> Clone for Recursive<'i, H, I, O, E> {
 impl<'i, H, I, O, E> Recursive<'i, H, I, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     /// Declare the existence of a recursive parser, allowing it to be used
@@ -50,7 +50,7 @@ where
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Recursive<'i, H, I, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     type Output = O;
@@ -73,7 +73,7 @@ where
 pub fn recursive<'i, H, I, F, C>(f: F) -> Recursive<'i, H, I, C::Output, C::Error>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     F: FnOnce(&Recursive<'i, H, I, C::Output, C::Error>) -> C,
     C: parser::Parser<'i, H, I> + 'i,
 {

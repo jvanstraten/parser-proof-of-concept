@@ -135,7 +135,7 @@ impl<'e, E> Iterator for ErrorIter<'e, E> {
 pub trait Parser<'i, H, I>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
 {
     /// The parse tree type returned by the parser.
     type Output;
@@ -552,7 +552,7 @@ where
 pub struct Stream<'i, 'p, H, I, P>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     P: Parser<'i, H, I>,
 {
     input: stream::Stream<'i, H, I, <P::Error as error::Error<'i, H, I>>::LocationTracker>,
@@ -562,7 +562,7 @@ where
 impl<'i, 'p, H, I, P> Iterator for Stream<'i, 'p, H, I, P>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     P: Parser<'i, H, I>,
 {
     type Item = Result<P::Output, P::Error>;
@@ -579,7 +579,7 @@ where
 impl<'i, 'p, H, I, P> Stream<'i, 'p, H, I, P>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     P: Parser<'i, H, I>,
 {
     /// Return an iterator that yields the remaining tokens.
@@ -592,7 +592,7 @@ where
 pub struct Tail<'i, H, I, L>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     L: location::Tracker<I>,
 {
     input: stream::Stream<'i, H, I, L>,
@@ -601,7 +601,7 @@ where
 impl<'i, H, I, L> Iterator for Tail<'i, H, I, L>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     L: location::Tracker<I>,
 {
     type Item = H;

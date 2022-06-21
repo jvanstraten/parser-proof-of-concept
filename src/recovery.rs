@@ -31,7 +31,7 @@ use super::stream;
 pub trait Recover<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     /// Called when the given `parser` has failed to parse the input in
@@ -71,7 +71,7 @@ where
 pub trait Strategy<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     Self: Recover<'i, H, I, C>,
 {
@@ -82,7 +82,7 @@ where
 pub trait IncompleteStrategy<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     Self: Recover<'i, H, I, C>,
 {
@@ -431,11 +431,11 @@ where
 
 /// A strategy that tries nothing and is all out of ideas: it serves as a
 /// starting point for constructing strategies. See [attempt_to()].
-pub struct AttemptTo<H, I, C> {
-    phantom: PhantomData<(H, I, C)>,
+pub struct AttemptTo<'i, H, I: ?Sized, C> {
+    phantom: PhantomData<(H, &'i I, C)>,
 }
 
-impl<H, I, C> Clone for AttemptTo<H, I, C> {
+impl<'i, H, I: ?Sized, C> Clone for AttemptTo<'i, H, I, C> {
     fn clone(&self) -> Self {
         Self {
             phantom: Default::default(),
@@ -443,10 +443,10 @@ impl<H, I, C> Clone for AttemptTo<H, I, C> {
     }
 }
 
-impl<'i, H, I, C> Recover<'i, H, I, C> for AttemptTo<H, I, C>
+impl<'i, H, I, C> Recover<'i, H, I, C> for AttemptTo<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     fn recover(
@@ -466,10 +466,10 @@ where
     }
 }
 
-impl<'i, H, I, C> IncompleteStrategy<'i, H, I, C> for AttemptTo<H, I, C>
+impl<'i, H, I, C> IncompleteStrategy<'i, H, I, C> for AttemptTo<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
 }
@@ -492,10 +492,10 @@ where
 ///
 /// Also note that most combinators have a shorthand function for
 /// `attempt_to().do_x()`, so you should rarely have to use this directly.
-pub fn attempt_to<'i, H, I, C>() -> AttemptTo<H, I, C>
+pub fn attempt_to<'i, H, I, C>() -> AttemptTo<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     AttemptTo {
@@ -512,7 +512,7 @@ pub struct Restart<S> {
 impl<'i, H, I, C, S> Recover<'i, H, I, C> for Restart<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
@@ -541,7 +541,7 @@ where
 impl<'i, H, I, C, S> IncompleteStrategy<'i, H, I, C> for Restart<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
@@ -556,7 +556,7 @@ pub struct SeekToFailed<S> {
 impl<'i, H, I, C, S> Recover<'i, H, I, C> for SeekToFailed<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
@@ -585,17 +585,17 @@ where
 impl<'i, H, I, C, S> IncompleteStrategy<'i, H, I, C> for SeekToFailed<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::seek_to_failed()].
-pub fn seek_to_failed<'i, H, I, C>() -> SeekToFailed<AttemptTo<H, I, C>>
+pub fn seek_to_failed<'i, H, I, C>() -> SeekToFailed<AttemptTo<'i, H, I, C>>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     attempt_to().seek_to_failed()
@@ -610,7 +610,7 @@ pub struct Skip<S> {
 impl<'i, H, I, C, S> Recover<'i, H, I, C> for Skip<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
@@ -639,17 +639,17 @@ where
 impl<'i, H, I, C, S> IncompleteStrategy<'i, H, I, C> for Skip<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::skip()].
-pub fn skip<'i, H, I, C>() -> Skip<AttemptTo<H, I, C>>
+pub fn skip<'i, H, I, C>() -> Skip<AttemptTo<'i, H, I, C>>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     attempt_to().skip()
@@ -665,7 +665,7 @@ pub struct SkipIf<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for SkipIf<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
@@ -701,7 +701,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for SkipIf<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
@@ -709,10 +709,10 @@ where
 }
 
 /// See [IncompleteStrategy::skip_if()].
-pub fn skip_if<'i, H, I, C, F>(predicate: F) -> SkipIf<AttemptTo<H, I, C>, F>
+pub fn skip_if<'i, H, I, C, F>(predicate: F) -> SkipIf<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(&I) -> bool,
 {
@@ -729,7 +729,7 @@ pub struct Find<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for Find<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
@@ -765,7 +765,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for Find<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
@@ -773,10 +773,10 @@ where
 }
 
 /// See [IncompleteStrategy::find()].
-pub fn find<'i, H, I, C, F>(predicate: F) -> Find<AttemptTo<H, I, C>, F>
+pub fn find<'i, H, I, C, F>(predicate: F) -> Find<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(&I) -> bool,
 {
@@ -793,7 +793,7 @@ pub struct Scan<S, F> {
 impl<'i, H, I, C, S, F, T> Recover<'i, H, I, C> for Scan<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> T,
@@ -833,7 +833,7 @@ where
 impl<'i, H, I, C, S, F, T> IncompleteStrategy<'i, H, I, C> for Scan<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> T,
@@ -842,10 +842,10 @@ where
 }
 
 /// See [IncompleteStrategy::scan()].
-pub fn scan<'i, H, I, C, F, T>(factory: F) -> Scan<AttemptTo<H, I, C>, F>
+pub fn scan<'i, H, I, C, F, T>(factory: F) -> Scan<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn() -> T,
     T: scanner::Scanner<'i, H, I, C::Error>,
@@ -863,7 +863,7 @@ pub struct Maybe<S, T> {
 impl<'i, H, I, C, S, T> Recover<'i, H, I, C> for Maybe<S, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     T: IncompleteStrategy<'i, H, I, C>,
@@ -900,7 +900,7 @@ where
 impl<'i, H, I, C, S, T> IncompleteStrategy<'i, H, I, C> for Maybe<S, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     T: IncompleteStrategy<'i, H, I, C>,
@@ -908,10 +908,10 @@ where
 }
 
 /// See [IncompleteStrategy::maybe()].
-pub fn maybe<'i, H, I, C, T>(inner: T) -> Maybe<AttemptTo<H, I, C>, T>
+pub fn maybe<'i, H, I, C, T>(inner: T) -> Maybe<AttemptTo<'i, H, I, C>, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     T: IncompleteStrategy<'i, H, I, C>,
 {
@@ -929,7 +929,7 @@ pub struct WhileNot<S, F, T> {
 impl<'i, H, I, C, S, F, T> Recover<'i, H, I, C> for WhileNot<S, F, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
@@ -972,7 +972,7 @@ where
 impl<'i, H, I, C, S, F, T> IncompleteStrategy<'i, H, I, C> for WhileNot<S, F, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&I) -> bool,
@@ -981,10 +981,10 @@ where
 }
 
 /// See [IncompleteStrategy::while_not()].
-pub fn while_not<'i, H, I, C, F, T>(predicate: F, inner: T) -> WhileNot<AttemptTo<H, I, C>, F, T>
+pub fn while_not<'i, H, I, C, F, T>(predicate: F, inner: T) -> WhileNot<AttemptTo<'i, H, I, C>, F, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(&I) -> bool,
     T: IncompleteStrategy<'i, H, I, C>,
@@ -1025,7 +1025,7 @@ impl<S> Retry<S> {
 impl<'i, H, I, C, S> Recover<'i, H, I, C> for Retry<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
@@ -1066,17 +1066,17 @@ where
 impl<'i, H, I, C, S> IncompleteStrategy<'i, H, I, C> for Retry<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
 }
 
 /// See [IncompleteStrategy::retry()].
-pub fn retry<'i, H, I, C>() -> Retry<AttemptTo<H, I, C>>
+pub fn retry<'i, H, I, C>() -> Retry<AttemptTo<'i, H, I, C>>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     attempt_to().retry()
@@ -1116,7 +1116,7 @@ impl<S, T> TryToParse<S, T> {
 impl<'i, H, I, C, S, T> Recover<'i, H, I, C> for TryToParse<S, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     T: parser::Parser<'i, H, I, Output = C::Output, Error = C::Error>,
@@ -1158,7 +1158,7 @@ where
 impl<'i, H, I, C, S, T> IncompleteStrategy<'i, H, I, C> for TryToParse<S, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     T: parser::Parser<'i, H, I, Output = C::Output, Error = C::Error>,
@@ -1166,10 +1166,10 @@ where
 }
 
 /// See [IncompleteStrategy::try_to_parse()].
-pub fn try_to_parse<'i, H, I, C, T>(parser: T) -> TryToParse<AttemptTo<H, I, C>, T>
+pub fn try_to_parse<'i, H, I, C, T>(parser: T) -> TryToParse<AttemptTo<'i, H, I, C>, T>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     T: parser::Parser<'i, H, I, Output = C::Output, Error = C::Error>,
 {
@@ -1186,7 +1186,7 @@ pub struct PushError<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for PushError<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> C::Error,
@@ -1216,7 +1216,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for PushError<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> C::Error,
@@ -1224,10 +1224,10 @@ where
 }
 
 /// See [IncompleteStrategy::push_error()].
-pub fn push_error<'i, H, I, C, F>(factory: F) -> PushError<AttemptTo<H, I, C>, F>
+pub fn push_error<'i, H, I, C, F>(factory: F) -> PushError<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn() -> C::Error,
 {
@@ -1244,7 +1244,7 @@ pub struct PushErrorHere<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for PushErrorHere<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1276,7 +1276,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for PushErrorHere<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1286,10 +1286,10 @@ where
 }
 
 /// See [IncompleteStrategy::push_error_here()].
-pub fn push_error_here<'i, H, I, C, F>(factory: F) -> PushErrorHere<AttemptTo<H, I, C>, F>
+pub fn push_error_here<'i, H, I, C, F>(factory: F) -> PushErrorHere<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Location,
@@ -1308,7 +1308,7 @@ pub struct PushErrorUpToHere<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for PushErrorUpToHere<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1340,7 +1340,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for PushErrorUpToHere<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1350,10 +1350,10 @@ where
 }
 
 /// See [IncompleteStrategy::push_error_up_to_here()].
-pub fn push_error_up_to_here<'i, H, I, C, F>(factory: F) -> PushErrorUpToHere<AttemptTo<H, I, C>, F>
+pub fn push_error_up_to_here<'i, H, I, C, F>(factory: F) -> PushErrorUpToHere<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
@@ -1372,7 +1372,7 @@ pub struct PushErrorForToken<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for PushErrorForToken<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1405,7 +1405,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for PushErrorForToken<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1416,10 +1416,10 @@ where
 }
 
 /// See [IncompleteStrategy::push_error_for_token()].
-pub fn push_error_for_token<'i, H, I, C, F>(factory: F) -> PushErrorForToken<AttemptTo<H, I, C>, F>
+pub fn push_error_for_token<'i, H, I, C, F>(factory: F) -> PushErrorForToken<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         Option<H>,
@@ -1439,7 +1439,7 @@ pub struct UpdateErrors<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for UpdateErrors<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&mut Vec<C::Error>),
@@ -1469,7 +1469,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for UpdateErrors<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(&mut Vec<C::Error>),
@@ -1477,10 +1477,10 @@ where
 }
 
 /// See [IncompleteStrategy::update_errors()].
-pub fn update_errors<'i, H, I, C, F>(updater: F) -> UpdateErrors<AttemptTo<H, I, C>, F>
+pub fn update_errors<'i, H, I, C, F>(updater: F) -> UpdateErrors<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(&mut Vec<C::Error>),
 {
@@ -1497,7 +1497,7 @@ pub struct UpdateErrorsHere<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for UpdateErrorsHere<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1530,7 +1530,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for UpdateErrorsHere<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1541,10 +1541,10 @@ where
 }
 
 /// See [IncompleteStrategy::update_errors_here()].
-pub fn update_errors_here<'i, H, I, C, F>(updater: F) -> UpdateErrorsHere<AttemptTo<H, I, C>, F>
+pub fn update_errors_here<'i, H, I, C, F>(updater: F) -> UpdateErrorsHere<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         &mut Vec<C::Error>,
@@ -1564,7 +1564,7 @@ pub struct UpdateErrorsUpToHere<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for UpdateErrorsUpToHere<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1597,7 +1597,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for UpdateErrorsUpToHere<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1610,10 +1610,10 @@ where
 /// See [IncompleteStrategy::update_errors_up_to_here()].
 pub fn update_errors_up_to_here<'i, H, I, C, F>(
     updater: F,
-) -> UpdateErrorsUpToHere<AttemptTo<H, I, C>, F>
+) -> UpdateErrorsUpToHere<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         &mut Vec<C::Error>,
@@ -1633,7 +1633,7 @@ pub struct UpdateErrorsForToken<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for UpdateErrorsForToken<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1667,7 +1667,7 @@ where
 impl<'i, H, I, C, S, F> IncompleteStrategy<'i, H, I, C> for UpdateErrorsForToken<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1681,10 +1681,10 @@ where
 /// See [IncompleteStrategy::update_errors_for_token()].
 pub fn update_errors_for_token<'i, H, I, C, F>(
     updater: F,
-) -> UpdateErrorsForToken<AttemptTo<H, I, C>, F>
+) -> UpdateErrorsForToken<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         &mut Vec<C::Error>,
@@ -1699,7 +1699,7 @@ where
 pub struct Boxed<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     pub(crate) strategy: std::rc::Rc<dyn IncompleteStrategy<'i, H, I, C> + 'i>,
@@ -1708,7 +1708,7 @@ where
 impl<'i, H, I, C> Clone for Boxed<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     fn clone(&self) -> Self {
@@ -1721,7 +1721,7 @@ where
 impl<'i, H, I, C> Recover<'i, H, I, C> for Boxed<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     fn recover(
@@ -1745,7 +1745,7 @@ where
 impl<'i, H, I, C> IncompleteStrategy<'i, H, I, C> for Boxed<'i, H, I, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
 }
@@ -1760,7 +1760,7 @@ pub struct Return<S, O> {
 impl<'i, H, I, C, S> Recover<'i, H, I, C> for Return<S, C::Output>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     C::Output: Clone,
     S: IncompleteStrategy<'i, H, I, C>,
@@ -1787,7 +1787,7 @@ where
 impl<'i, H, I, C, S> Strategy<'i, H, I, C> for Return<S, C::Output>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     C::Output: Clone,
     S: IncompleteStrategy<'i, H, I, C>,
@@ -1795,10 +1795,10 @@ where
 }
 
 /// See [IncompleteStrategy::and_return()].
-pub fn just_return<'i, H, I, C>(output: C::Output) -> Return<AttemptTo<H, I, C>, C::Output>
+pub fn just_return<'i, H, I, C>(output: C::Output) -> Return<AttemptTo<'i, H, I, C>, C::Output>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     C::Output: Clone,
 {
@@ -1815,7 +1815,7 @@ pub struct ReturnWith<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for ReturnWith<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> C::Output,
@@ -1842,7 +1842,7 @@ where
 impl<'i, H, I, C, S, F> Strategy<'i, H, I, C> for ReturnWith<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn() -> C::Output,
@@ -1850,10 +1850,10 @@ where
 }
 
 /// See [IncompleteStrategy::and_return_with()].
-pub fn just_return_with<'i, H, I, C, F>(output: F) -> ReturnWith<AttemptTo<H, I, C>, F>
+pub fn just_return_with<'i, H, I, C, F>(output: F) -> ReturnWith<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn() -> C::Output,
 {
@@ -1870,7 +1870,7 @@ pub struct ReturnWithSpan<S, F> {
 impl<'i, H, I, C, S, F> Recover<'i, H, I, C> for ReturnWithSpan<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1899,7 +1899,7 @@ where
 impl<'i, H, I, C, S, F> Strategy<'i, H, I, C> for ReturnWithSpan<S, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
     F: Fn(
@@ -1909,10 +1909,10 @@ where
 }
 
 /// See [IncompleteStrategy::and_return_with_span()].
-pub fn just_return_with_span<'i, H, I, C, F>(output: F) -> ReturnWithSpan<AttemptTo<H, I, C>, F>
+pub fn just_return_with_span<'i, H, I, C, F>(output: F) -> ReturnWithSpan<AttemptTo<'i, H, I, C>, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         <<C::Error as error::Error<'i, H, I>>::LocationTracker as location::Tracker<I>>::Span,
@@ -1930,7 +1930,7 @@ pub struct OrFail<S> {
 impl<'i, H, I, C, S> Recover<'i, H, I, C> for OrFail<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
@@ -1955,7 +1955,7 @@ where
 impl<'i, H, I, C, S> Strategy<'i, H, I, C> for OrFail<S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: IncompleteStrategy<'i, H, I, C>,
 {
@@ -2139,7 +2139,7 @@ mod tests {
             stream.next(),
             Some(ParseResult::Recovered(&'a', _))
         ));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().cloned().collect::<Vec<_>>().is_empty());
 
         let mut stream = parser.stream(&['b', 'a', 'c']);
         assert!(matches!(
@@ -2160,7 +2160,7 @@ mod tests {
             stream.next(),
             Some(ParseResult::Recovered(&'a', _))
         ));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().cloned().collect::<Vec<_>>().is_empty());
 
         let mut stream = parser.stream(&['b', 'a', 'c']);
         assert!(matches!(
@@ -2181,9 +2181,13 @@ mod tests {
     fn test_nested_delimiters() {
         let parser = just(&'a')
             .to_recover(
-                scan(nested_delimiters(&[(&'(', &')'), (&'|', &'|'), (&'[', &']')]).clone())
-                    .skip()
-                    .and_return(&'a'),
+                scan(nested_delimiters(&[
+                    (&'(', &')'),
+                    (&'|', &'|'),
+                    (&'[', &']'),
+                ]))
+                .skip()
+                .and_return(&'a'),
             )
             .with_error::<SimpleError<_, char>>()
             .clone();
@@ -2217,7 +2221,7 @@ mod tests {
             stream.next(),
             Some(ParseResult::Recovered(&'a', _))
         ));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().cloned().collect::<Vec<_>>().is_empty());
 
         // Test safety for equal left and right delimiter.
         let mut stream = parser.stream(&['|', '|', '|', '|', 'b', 'c']);

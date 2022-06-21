@@ -11,11 +11,11 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 
 /// See [parser::Parser::boxed()].
-pub struct Boxed<'i, H, I, O, E = error::Simple<H, I>> {
+pub struct Boxed<'i, H, I: ?Sized, O, E = error::Simple<H, I>> {
     pub(crate) child: Rc<dyn parser::Parser<'i, H, I, Output = O, Error = E> + 'i>,
 }
 
-impl<'i, H, I, O, E> Clone for Boxed<'i, H, I, O, E> {
+impl<'i, H, I: ?Sized, O, E> Clone for Boxed<'i, H, I, O, E> {
     fn clone(&self) -> Self {
         Self {
             child: self.child.clone(),
@@ -26,7 +26,7 @@ impl<'i, H, I, O, E> Clone for Boxed<'i, H, I, O, E> {
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Boxed<'i, H, I, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     type Output = O;
@@ -59,7 +59,7 @@ impl<C: Clone, E> Clone for WithError<C, E> {
 impl<'i, H, I, C> parser::Parser<'i, H, I> for WithError<C, C::Error>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     type Output = C::Output;
@@ -89,7 +89,7 @@ pub struct To<C, O> {
 impl<'i, H, I, C, O> parser::Parser<'i, H, I> for To<C, O>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     O: Clone,
 {
@@ -124,7 +124,7 @@ pub struct Some<C> {
 impl<'i, H, I, C> parser::Parser<'i, H, I> for Some<C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     type Output = Option<C::Output>;
@@ -154,7 +154,7 @@ pub struct Map<C, F> {
 impl<'i, H, I, C, F, O> parser::Parser<'i, H, I> for Map<C, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(C::Output) -> O,
 {
@@ -187,7 +187,7 @@ pub struct MapWithSpan<C, F> {
 impl<'i, H, I, C, F, O> parser::Parser<'i, H, I> for MapWithSpan<C, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         C::Output,
@@ -224,7 +224,7 @@ pub struct MapErr<C, F> {
 impl<'i, H, I, C, F, E> parser::Parser<'i, H, I> for MapErr<C, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(C::Error) -> E,
     E: error::Error<
@@ -263,7 +263,7 @@ pub struct MapErrWithSpan<C, F> {
 impl<'i, H, I, C, F, E> parser::Parser<'i, H, I> for MapErrWithSpan<C, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         C::Error,
@@ -315,7 +315,7 @@ pub struct TryMap<C, F> {
 impl<'i, H, I, C, F, O> parser::Parser<'i, H, I> for TryMap<C, F>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     F: Fn(
         C::Output,
@@ -367,7 +367,7 @@ pub struct Then<A, B> {
 impl<'i, H, I, A, B> parser::Parser<'i, H, I> for Then<A, B>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     A: parser::Parser<'i, H, I>,
     B: parser::Parser<'i, H, I, Error = A::Error>,
 {
@@ -398,7 +398,7 @@ pub struct ThenIgnore<A, B> {
 impl<'i, H, I, A, B> parser::Parser<'i, H, I> for ThenIgnore<A, B>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     A: parser::Parser<'i, H, I>,
     B: parser::Parser<'i, H, I, Error = A::Error>,
 {
@@ -429,7 +429,7 @@ pub struct IgnoreThen<A, B> {
 impl<'i, H, I, A, B> parser::Parser<'i, H, I> for IgnoreThen<A, B>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     A: parser::Parser<'i, H, I>,
     B: parser::Parser<'i, H, I, Error = A::Error>,
 {
@@ -461,7 +461,7 @@ pub struct DelimitedBy<A, B, C> {
 impl<'i, H, I, A, B, C> parser::Parser<'i, H, I> for DelimitedBy<A, B, C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     A: parser::Parser<'i, H, I>,
     B: parser::Parser<'i, H, I, Error = A::Error>,
     C: parser::Parser<'i, H, I, Error = A::Error>,
@@ -500,7 +500,7 @@ pub struct PaddedBy<A, B> {
 impl<'i, H, I, A, B> parser::Parser<'i, H, I> for PaddedBy<A, B>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     A: parser::Parser<'i, H, I>,
     B: parser::Parser<'i, H, I, Error = A::Error>,
 {
@@ -529,11 +529,11 @@ where
 }
 
 /// See [parser::Parser::chain()].
-pub struct Chain<'i, H, I, O, E> {
+pub struct Chain<'i, H, I: ?Sized, O, E> {
     pub(crate) parsers: Vec<Boxed<'i, H, I, O, E>>,
 }
 
-impl<'i, H, I, O, E> Clone for Chain<'i, H, I, O, E> {
+impl<'i, H, I: ?Sized, O, E> Clone for Chain<'i, H, I, O, E> {
     fn clone(&self) -> Self {
         Self {
             parsers: self.parsers.clone(),
@@ -544,7 +544,7 @@ impl<'i, H, I, O, E> Clone for Chain<'i, H, I, O, E> {
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Chain<'i, H, I, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     O: 'i,
     E: error::Error<'i, H, I>,
 {
@@ -568,7 +568,7 @@ where
 impl<'i, H, I, O, E> Chain<'i, H, I, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     /// Append an additional parser to this chain.
@@ -592,7 +592,7 @@ pub struct Or<A, B> {
 impl<'i, H, I, A, B> parser::Parser<'i, H, I> for Or<A, B>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     A: parser::Parser<'i, H, I>,
     B: parser::Parser<'i, H, I, Output = A::Output, Error = A::Error>,
 {
@@ -622,7 +622,7 @@ pub struct OrNot<C> {
 impl<'i, H, I, C> parser::Parser<'i, H, I> for OrNot<C>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
 {
     type Output = Option<C::Output>;
@@ -648,11 +648,11 @@ where
 }
 
 /// See [parser::Parser::alters()].
-pub struct Alters<'i, H, I, O, E> {
+pub struct Alters<'i, H, I: ?Sized, O, E> {
     pub(crate) parsers: Vec<Boxed<'i, H, I, O, E>>,
 }
 
-impl<'i, H, I, O, E> Clone for Alters<'i, H, I, O, E> {
+impl<'i, H, I: ?Sized, O, E> Clone for Alters<'i, H, I, O, E> {
     fn clone(&self) -> Self {
         Self {
             parsers: self.parsers.clone(),
@@ -663,7 +663,7 @@ impl<'i, H, I, O, E> Clone for Alters<'i, H, I, O, E> {
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Alters<'i, H, I, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     O: 'i,
     E: error::Error<'i, H, I>,
 {
@@ -687,7 +687,7 @@ where
 impl<'i, H, I, O, E> Alters<'i, H, I, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     /// Append an additional parser to this chain.
@@ -715,7 +715,7 @@ pub struct SeparatedBy<A, B> {
 impl<'i, H, I, A, B> parser::Parser<'i, H, I> for SeparatedBy<A, B>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     A: parser::Parser<'i, H, I>,
     B: parser::Parser<'i, H, I, Error = A::Error>,
 {
@@ -800,7 +800,7 @@ pub struct ToRecover<C, S> {
 impl<'i, H, I, C, S> parser::Parser<'i, H, I> for ToRecover<C, S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     C: parser::Parser<'i, H, I>,
     S: recovery::Strategy<'i, H, I, C>,
 {
@@ -1141,7 +1141,7 @@ mod tests {
             stream.next(),
             Some(ParseResult::Success(vec![&'a', &'a', &'a']))
         );
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().cloned().collect::<Vec<_>>().is_empty());
 
         let mut stream = parser.stream(&['b', 'c', 'a']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![])));
@@ -1171,7 +1171,7 @@ mod tests {
             stream.next(),
             Some(ParseResult::Success(vec![&'a', &'a', &'a']))
         );
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().cloned().collect::<Vec<_>>().is_empty());
 
         let mut stream = parser.stream(&['b', 'c', 'a']);
         assert!(matches!(stream.next(), Some(ParseResult::Failed(0, _))));
@@ -1276,7 +1276,7 @@ mod tests {
 
         let mut stream = parser.stream(&[',', 'a']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().cloned().collect::<Vec<_>>().is_empty());
 
         let mut stream = parser.stream(&['a', ',']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
@@ -1318,6 +1318,6 @@ mod tests {
 
         let mut stream = parser.stream(&['a', ',']);
         assert_eq!(stream.next(), Some(ParseResult::Success(vec![&'a'])));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().cloned().collect::<Vec<_>>().is_empty());
     }
 }

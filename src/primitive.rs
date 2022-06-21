@@ -22,7 +22,7 @@ impl<E> Clone for Empty<E> {
 impl<'i, H, I, E> parser::Parser<'i, H, I> for Empty<E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     type Output = ();
@@ -60,7 +60,7 @@ impl<O, E> Clone for None<O, E> {
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for None<O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     type Output = Option<O>;
@@ -99,7 +99,7 @@ impl<E> Clone for End<E> {
 impl<'i, H, I, E> parser::Parser<'i, H, I> for End<E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     type Output = ();
@@ -136,7 +136,7 @@ pub fn end<E>() -> End<E> {
 pub struct Just<'i, H, I, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
 {
     expected: H,
     phantom: std::marker::PhantomData<(&'i I, E)>,
@@ -145,7 +145,7 @@ where
 impl<'i, H, I, E> Clone for Just<'i, H, I, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
 {
     fn clone(&self) -> Self {
         Self {
@@ -158,7 +158,7 @@ where
 impl<'i, H, I, E> parser::Parser<'i, H, I> for Just<'i, H, I, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
     E: error::Error<'i, H, I>,
 {
     type Output = H;
@@ -195,7 +195,7 @@ where
 pub fn just<'i, H, I, E>(expected: H) -> Just<'i, H, I, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
 {
     Just {
         expected,
@@ -221,7 +221,7 @@ impl<F: Clone, E> Clone for Filter<F, E> {
 impl<'i, H, I, F, E> parser::Parser<'i, H, I> for Filter<F, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     F: Fn(&I) -> bool,
     E: error::Error<'i, H, I>,
 {
@@ -257,6 +257,7 @@ where
 /// reference to the incoming token if the filter returned true.
 pub fn filter<I, F, E>(filter: F) -> Filter<F, E>
 where
+    I: ?Sized,
     F: Fn(&I) -> bool,
 {
     Filter {
@@ -283,7 +284,7 @@ impl<F: Clone, E> Clone for FilterMap<F, E> {
 impl<'i, H, I, F, O, E> parser::Parser<'i, H, I> for FilterMap<F, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     F: Fn(&I) -> Option<O>,
     E: error::Error<'i, H, I>,
 {
@@ -317,6 +318,7 @@ where
 /// result of the filter function if it returned Some.
 pub fn filter_map<I, F, O, E>(filter: F) -> FilterMap<F, E>
 where
+    I: ?Sized,
     F: Fn(&I) -> Option<O>,
 {
     FilterMap {
@@ -343,7 +345,7 @@ impl<'i, O, E> Clone for Seq<'i, O, E> {
 impl<'i, H, I, O, E> parser::Parser<'i, H, I> for Seq<'i, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
     &'i O: IntoIterator<Item = H>,
     E: error::Error<'i, H, I>,
 {
@@ -392,7 +394,7 @@ where
 pub fn seq<'i, H, I, O, E>(expected: &'i O) -> Seq<'i, O, E>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
     &'i O: IntoIterator<Item = H>,
 {
     Seq {
@@ -420,7 +422,7 @@ impl<'i, G, H, I, E> parser::Parser<'i, H, I> for OneOf<'i, G, E>
 where
     &'i G: IntoIterator<Item = H> + 'i,
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
     E: error::Error<'i, H, I>,
 {
     type Output = H;
@@ -461,7 +463,7 @@ pub fn one_of<'i, G, H, I, E>(expected: &'i G) -> OneOf<G, E>
 where
     &'i G: IntoIterator<Item = H> + 'i,
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
 {
     OneOf {
         expected,
@@ -488,7 +490,7 @@ impl<'i, G, H, I, E> parser::Parser<'i, H, I> for NoneOf<'i, G, E>
 where
     &'i G: IntoIterator<Item = H> + 'i,
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
     E: error::Error<'i, H, I>,
 {
     type Output = H;
@@ -540,7 +542,7 @@ pub fn none_of<'i, G, H, I, E>(rejected: &'i G) -> NoneOf<'i, G, E>
 where
     &'i G: IntoIterator<Item = H> + 'i,
     H: Borrow<I> + Clone + 'i,
-    I: 'i + PartialEq,
+    I: ?Sized + PartialEq + 'i,
 {
     NoneOf {
         rejected,

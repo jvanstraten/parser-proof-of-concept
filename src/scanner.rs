@@ -9,7 +9,7 @@ use super::location;
 pub trait Scanner<'i, H, I, E = error::Simple<H, I>>
 where
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: ?Sized + 'i,
     E: error::Error<'i, H, I>,
 {
     /// Called by [Strategy::scan()] recovery strategy for each token
@@ -34,13 +34,13 @@ where
 }
 
 /// See [nested_delimiters()].
-pub struct NestedDelimiters<'i, H, I, S> {
+pub struct NestedDelimiters<'i, H, I: ?Sized, S> {
     types: &'i [(H, H)],
     stack: Vec<(usize, H, S)>,
     phantom: std::marker::PhantomData<I>,
 }
 
-impl<'i, H: Clone, I, S: Clone> Clone for NestedDelimiters<'i, H, I, S> {
+impl<'i, H: Clone, I: ?Sized, S: Clone> Clone for NestedDelimiters<'i, H, I, S> {
     fn clone(&self) -> Self {
         Self {
             types: self.types,
@@ -53,7 +53,7 @@ impl<'i, H: Clone, I, S: Clone> Clone for NestedDelimiters<'i, H, I, S> {
 impl<'i, H, I, S> NestedDelimiters<'i, H, I, S>
 where
     H: Borrow<I> + Clone + 'i,
-    I: PartialEq + 'i,
+    I: ?Sized + PartialEq + 'i,
     S: Clone,
 {
     fn handle_token<E, L>(&mut self, token: H, span: S, errors: &mut Vec<E>)
@@ -148,7 +148,7 @@ impl<'i, H, I, E> Scanner<'i, H, I, E>
     for NestedDelimiters<'i, H, I, <E::LocationTracker as location::Tracker<I>>::Span>
 where
     H: Borrow<I> + Clone + 'i,
-    I: PartialEq,
+    I: ?Sized + PartialEq,
     E: error::Error<'i, H, I>,
     <E::LocationTracker as location::Tracker<I>>::Location: Clone,
     <E::LocationTracker as location::Tracker<I>>::Span: Clone,
@@ -192,7 +192,7 @@ pub fn nested_delimiters<'i, H, I, S>(
     types: &'i [(H, H)],
 ) -> impl Fn() -> NestedDelimiters<'i, H, I, S> + Clone
 where
-    I: PartialEq,
+    I: ?Sized + PartialEq,
 {
     || NestedDelimiters {
         types,

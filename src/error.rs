@@ -54,7 +54,7 @@ pub trait Error<'i, H, I>
 where
     Self: Fallback,
     H: Borrow<I> + Clone + 'i,
-    I: 'i,
+    I: 'i + ?Sized,
 {
     /// The location tracker used to provide location information for the
     /// error messages.
@@ -138,9 +138,10 @@ pub trait Fallback {
 }
 
 /// Simple error message type.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Simple<H, I, L = location::Simple>
 where
+    I: ?Sized,
     L: location::Tracker<I>,
     H: Borrow<I> + Clone + Eq + std::hash::Hash,
 {
@@ -160,10 +161,37 @@ where
     Custom(String, At<L::Location, L::Span>),
 }
 
+impl<H, I, L> Clone for Simple<H, I, L>
+where
+    I: ?Sized,
+    L: location::Tracker<I>,
+    L::Location: Clone,
+    L::Span: Clone,
+    H: Borrow<I> + Clone + Eq + std::hash::Hash,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::ExpectedFound(arg0, arg1, arg2) => {
+                Self::ExpectedFound(arg0.clone(), arg1.clone(), arg2.clone())
+            }
+            Self::UnmatchedLeftDelimiter(arg0, arg1, arg2) => {
+                Self::UnmatchedLeftDelimiter(arg0.clone(), arg1.clone(), arg2.clone())
+            }
+            Self::UnmatchedRightDelimiter(arg0, arg1, arg2) => {
+                Self::UnmatchedRightDelimiter(arg0.clone(), arg1.clone(), arg2.clone())
+            }
+            Self::UnmatchedDelimiterType(arg0, arg1, arg2, arg3) => {
+                Self::UnmatchedDelimiterType(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
+            }
+            Self::Custom(arg0, arg1) => Self::Custom(arg0.clone(), arg1.clone()),
+        }
+    }
+}
+
 impl<'i, H, I, L> Error<'i, H, I> for Simple<H, I, L>
 where
     H: 'i + Borrow<I> + Clone + Eq + std::hash::Hash,
-    I: 'i,
+    I: 'i + ?Sized,
     L: location::Tracker<I>,
 {
     type LocationTracker = L;
@@ -229,6 +257,7 @@ where
 impl<'i, H, I, L> Fallback for Simple<H, I, L>
 where
     H: Borrow<I> + Clone + Eq + std::hash::Hash + 'i,
+    I: ?Sized,
     L: location::Tracker<I>,
 {
     fn simple<M: ToString>(msg: M) -> Self {
@@ -239,7 +268,7 @@ where
 impl<'i, H, I, L> std::fmt::Display for Simple<H, I, L>
 where
     H: Borrow<I> + Clone + Eq + std::hash::Hash + 'i,
-    I: std::fmt::Display + Eq + std::hash::Hash,
+    I: std::fmt::Display + Eq + std::hash::Hash + ?Sized,
     L: location::Tracker<I>,
     L::Location: std::fmt::Display,
     L::Span: std::fmt::Display,
