@@ -402,24 +402,24 @@ where
 }
 
 /// See [one_of()].
-pub struct OneOf<'i, O, E> {
-    expected: &'i O,
+pub struct OneOf<O, E> {
+    expected: O,
     phantom: std::marker::PhantomData<E>,
 }
 
-impl<'i, O, E> Clone for OneOf<'i, O, E> {
+impl<O: Clone, E> Clone for OneOf<O, E> {
     fn clone(&self) -> Self {
         Self {
-            expected: self.expected,
+            expected: self.expected.clone(),
             phantom: Default::default(),
         }
     }
 }
 
-impl<'i, I, O, E> parser::Parser<'i, I> for OneOf<'i, O, E>
+impl<'i, 't, I, O, E> parser::Parser<'i, I> for OneOf<O, E>
 where
     I: Clone + PartialEq + 'i,
-    O: container::Container<'i, I>,
+    O: container::Container<'t, I>,
     E: error::Error<'i, I>,
 {
     type Output = I;
@@ -457,7 +457,7 @@ where
 
 /// Match one of the given sequence of tokens exactly, returning a reference to
 /// the incoming token that matched.
-pub fn one_of<'i, I, O, E>(expected: &'i O) -> OneOf<'i, O, E>
+pub fn one_of<'i, I, O, E>(expected: O) -> OneOf<O, E>
 where
     I: Clone + PartialEq + 'i,
     O: container::Container<'i, I>,

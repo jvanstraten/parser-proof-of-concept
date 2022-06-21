@@ -1915,7 +1915,7 @@ mod tests {
             stream.next(),
             Some(ParseResult::Recovered(&'a', _))
         ));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().collect::<Vec<_>>().is_empty());
 
         let mut stream = parser.stream(&['b', 'a', 'c']);
         assert!(matches!(
@@ -1935,7 +1935,7 @@ mod tests {
             stream.next(),
             Some(ParseResult::Recovered(&'a', _))
         ));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().collect::<Vec<_>>().is_empty());
 
         let mut stream = parser.stream(&['b', 'a', 'c']);
         assert!(matches!(
@@ -1991,7 +1991,7 @@ mod tests {
             stream.next(),
             Some(ParseResult::Recovered(&'a', _))
         ));
-        assert_eq!(stream.tail().cloned().collect::<Vec<_>>(), vec![]);
+        assert!(stream.tail().collect::<Vec<_>>().is_empty());
 
         // Test safety for equal left and right delimiter.
         let mut stream = parser.stream(&['|', '|', '|', '|', 'b', 'c']);

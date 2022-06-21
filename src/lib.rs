@@ -13,3 +13,6 @@ pub mod recovery;
 pub mod recursive;
 pub mod scanner;
 pub mod stream;
+
+#[cfg(test)]
+mod test;

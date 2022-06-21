@@ -6,4 +6,5 @@ pub use super::parser::Parser;
 pub use super::parser::Result as ParseResult;
 pub use super::primitive::*;
 pub use super::recovery::*;
+pub use super::recursive::*;
 pub use super::scanner::*;
