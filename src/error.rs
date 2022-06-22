@@ -135,6 +135,84 @@ pub trait Fallback {
     fn simple<M: ToString>(msg: M) -> Self;
 }
 
+/// Error message type that doesn't actually record any error information, just
+/// that there was an error.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Void<I> {
+    phantom: std::marker::PhantomData<I>,
+}
+
+impl<I> Default for Void<I> {
+    fn default() -> Self {
+        Self {
+            phantom: Default::default(),
+        }
+    }
+}
+
+impl<'i, I> Error<'i, I> for Void<I>
+where
+    I: 'i,
+{
+    type LocationTracker = location::Simple;
+
+    fn expected_found<J>(
+        _expected: J,
+        _found: Option<I>,
+        _at: At<usize, std::ops::Range<usize>>,
+    ) -> Self
+    where
+        J: IntoIterator<Item = Option<I>>,
+    {
+        Self::default()
+    }
+
+    fn merge_expected_found(&mut self, _other: &Self) {}
+
+    fn is_expected_found(&self) -> bool {
+        false
+    }
+
+    fn location(&self) -> At<&usize, &std::ops::Range<usize>> {
+        At::None
+    }
+
+    fn unmatched_left_delimiter(
+        _left_token: I,
+        _left_span: std::ops::Range<usize>,
+        _close_before: At<usize, std::ops::Range<usize>>,
+    ) -> Self {
+        Self::default()
+    }
+
+    fn unmatched_right_delimiter(
+        _right_token: I,
+        _right_span: std::ops::Range<usize>,
+        _open_before: At<usize, std::ops::Range<usize>>,
+    ) -> Self {
+        Self::default()
+    }
+
+    fn unmatched_delimiter_type(
+        _left_token: I,
+        _left_span: std::ops::Range<usize>,
+        _right_token: I,
+        _right_span: std::ops::Range<usize>,
+    ) -> Self {
+        Self::default()
+    }
+
+    fn custom<M: ToString>(_msg: M, _at: At<usize, std::ops::Range<usize>>) -> Self {
+        Self::default()
+    }
+}
+
+impl<I> Fallback for Void<I> {
+    fn simple<M: ToString>(_msg: M) -> Self {
+        Self::default()
+    }
+}
+
 /// Simple error message type.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Simple<I, L = location::Simple>

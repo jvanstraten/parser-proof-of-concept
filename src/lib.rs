@@ -14,5 +14,8 @@ pub mod recursive;
 pub mod scanner;
 pub mod stream;
 
-//#[cfg(test)]
+#[cfg(test)]
 mod test_pangram;
+
+#[cfg(test)]
+mod test_json;

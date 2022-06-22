@@ -3,5 +3,6 @@ name = "parse-proof-of-concept"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+[dev-dependencies]
 regex = "1"
+utf8-chars = "2"
