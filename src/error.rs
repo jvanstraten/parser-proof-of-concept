@@ -71,8 +71,7 @@ where
         >,
     ) -> Self
     where
-        J: IntoIterator<Item = Option<I>>,
-        J::IntoIter: 'i;
+        J: IntoIterator<Item = Option<I>>;
 
     /// Adds to the set of expected tokens by means of the given other
     /// expected-found message.
@@ -169,7 +168,6 @@ where
     fn expected_found<J>(expected: J, found: Option<I>, at: At<L::Location, L::Span>) -> Self
     where
         J: IntoIterator<Item = Option<I>>,
-        J::IntoIter: 'i,
     {
         Self::ExpectedFound(expected.into_iter().collect(), found, at)
     }
