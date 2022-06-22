@@ -436,8 +436,9 @@ where
         if let Some(found) = found {
             for expected in self.expected.get_iter() {
                 if found == &expected {
+                    let found = found.clone();
                     stream.advance();
-                    return parser::Result::Success(expected);
+                    return parser::Result::Success(found);
                 }
             }
         }
